@@ -308,11 +308,26 @@ window.__ModuleLoader__.load({
     const CSS = [
       '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
       '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
-      '.sc-sel{height:28px;max-width:320px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer}',
-      '.sc-sel:hover{border-color:var(--dsw-alias-border-l3)}',
-      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
+      // selects/buttons follow the model-picker idiom in ui-model-selection:
+      // ghost trigger + hover fill, popup on the shared "specific-menu" surface
+      '.sc-sel{display:inline-flex;align-items:center;gap:4px;height:28px;max-width:320px;padding:0 4px 0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;font-weight:400;line-height:20px;cursor:pointer}',
+      '.sc-sel:hover,a.sc-sel:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-sel:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.sc-sel[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-sel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-sel-chev{flex:none;color:var(--dsw-alias-label-caption);font-size:10px;line-height:1;transform:translateY(-1px)}',
+      '.sc-menu-wrap{position:relative;display:inline-flex;min-width:0}',
+      '.sc-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:1100;display:flex;flex-direction:column;min-width:min(320px,90vw);max-width:min(460px,92vw);max-height:min(360px,60vh);overflow:auto;padding:4px;border:0;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2));backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2)}',
+      '.sc-mi{display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:5px 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;font-weight:400;line-height:18px;text-align:left;cursor:pointer}',
+      '.sc-mi:hover,.sc-mi:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:none}',
+      '.sc-mi[data-on=true]{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.sc-mi-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-mi-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);font-size:12px;text-align:center}',
+      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
       '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-btn:active{background:var(--dsw-alias-interactive-bg-active)}',
+      '.sc-btn-solid{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}',
+      '.sc-btn-solid:hover{background:var(--dsw-alias-interactive-bg-active)}',
       '.sc-action{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;cursor:pointer}',
       '.sc-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-stat{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
@@ -331,10 +346,15 @@ window.__ModuleLoader__.load({
       '.sc-panel{width:100%;max-width:1440px;height:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;overflow:hidden;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-panel);box-shadow:var(--dsw-elevation-prominent)}',
       '.sc-panel .sc-head{background:transparent}',
       '.sc-panel ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2)}',
-      '.sc-seg{display:inline-flex;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);overflow:hidden}',
-      '.sc-seg button{height:26px;padding:0 10px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;cursor:pointer}',
-      '.sc-seg button[data-on=true]{background:var(--dsw-alias-markdown-tag);color:var(--dsw-alias-label-primary)}',
-      '.sc-seg button:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      // mode switch = the same tab idiom as the "对话 / 阅读" row in ui-conversation
+      '.sc-seg{display:flex;align-items:center;gap:24px;align-self:stretch;min-height:25px;margin-top:-2px}',
+      '.sc-seg button{position:relative;min-height:25px;padding:0 0 9px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:13px;font-weight:500;line-height:16px;cursor:pointer}',
+      '.sc-seg button::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:0 0}',
+      '.sc-seg button:hover{color:var(--dsw-alias-label-secondary)}',
+      '.sc-seg button[data-on=true]{color:var(--dsw-alias-state-business-primary)}',
+      '.sc-seg button[data-on=true]::after{background:var(--dsw-alias-state-business-primary)}',
+      '.sc-seg button:focus-visible{outline:none;color:var(--dsw-alias-state-business-primary)}',
+      '.sc-seg button:focus-visible::after{background:var(--dsw-alias-state-business-primary)}',
       '.sc-input{height:28px;width:200px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;outline:none}',
       '.sc-input::placeholder{color:var(--dsw-alias-label-dimmed)}',
       '.sc-input:focus{border-color:var(--dsw-alias-state-business-primary)}',
@@ -369,14 +389,70 @@ window.__ModuleLoader__.load({
     const spans = (ops, side) =>
       ops.map((o, i) => h('span', { key: i, className: o.t === 'same' ? undefined : side === 'left' ? 'sc-del' : 'sc-ins' }, o.text))
 
-    function Selector({ value, onChange, answers, placeholder }) {
+    // A native <select> cannot be styled (Chrome draws the option list itself),
+    // so this mirrors the model picker in ui-model-selection: a ghost trigger
+    // plus a popup rendered on the shared menu surface token.
+    function Picker({ value, onChange, items, placeholder, title, label }) {
+      const [open, setOpen] = React.useState(false)
+      const ref = React.useRef(null)
+      React.useEffect(() => {
+        if (!open) return undefined
+        const onDown = (e) => {
+          if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+        }
+        const onKey = (e) => {
+          if (e.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        return () => {
+          document.removeEventListener('mousedown', onDown)
+          document.removeEventListener('keydown', onKey)
+        }
+      }, [open])
+      const current = items.find((it) => it.value === value)
       return h(
-        'select',
-        { className: 'sc-sel', value: value ?? '', onChange: (e) => onChange(e.target.value || null) },
-        h('option', { value: '' }, placeholder),
-        answers.map((a) =>
-          h('option', { key: a.key, value: a.key }, `#${a.turn}${a.time ? ' ' + clock(a.time) : ''} · ${a.chars}字 · ${a.text.slice(0, 22).replace(/\s+/g, ' ')}`)
-        )
+        'div',
+        { className: 'sc-menu-wrap', ref },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'sc-sel',
+            title: title ?? (current ? current.label : placeholder),
+            'aria-expanded': open ? 'true' : 'false',
+            'aria-haspopup': 'listbox',
+            onClick: () => setOpen((v) => !v),
+          },
+          label ? h('span', { className: 'sc-sel-label', style: { flex: 'none' } }, label) : null,
+          h('span', { className: 'sc-sel-label' }, current ? current.label : placeholder),
+          h('span', { className: 'sc-sel-chev' }, '▾')
+        ),
+        open
+          ? h(
+              'div',
+              { className: 'sc-menu', role: 'listbox' },
+              items.map((it) =>
+                h(
+                  'button',
+                  {
+                    key: it.value,
+                    type: 'button',
+                    role: 'option',
+                    className: 'sc-mi',
+                    'data-on': it.value === value ? 'true' : 'false',
+                    'aria-selected': it.value === value ? 'true' : 'false',
+                    onClick: () => {
+                      onChange(it.value || null)
+                      setOpen(false)
+                    },
+                  },
+                  h('span', { className: 'sc-mi-text' }, it.label),
+                  h('span', { className: 'sc-mi-check' }, it.value === value ? '✓' : '')
+                )
+              )
+            )
+          : null
       )
     }
 
@@ -397,6 +473,18 @@ window.__ModuleLoader__.load({
       const turns = React.useMemo(() => turnsOf(snapshot), [snapshot])
       const answers = React.useMemo(() => answersOf(turns), [turns])
       const pairs = React.useMemo(() => autoPairs(turns), [turns])
+      const answerItems = React.useMemo(
+        () =>
+          answers.map((a) => ({
+            value: a.key,
+            label: `#${a.turn}${a.time ? ' ' + clock(a.time) : ''} · ${a.chars}字 · ${a.text.slice(0, 22).replace(/\s+/g, ' ')}`,
+          })),
+        [answers]
+      )
+      const pairItems = React.useMemo(
+        () => pairs.map((p, i) => ({ value: String(i), label: `#${p.from} × #${p.to} · ${p.question.slice(0, 26)}` })),
+        [pairs]
+      )
 
       React.useEffect(() => {
         if (!flash) return undefined
@@ -557,30 +645,27 @@ window.__ModuleLoader__.load({
           ),
           mode === 'compare'
             ? [
-                h(Selector, { key: 'ls', value: leftKey, onChange: setLeftKey, answers, placeholder: '左边：选一条回答' }),
-                h(Selector, { key: 'rs', value: rightKey, onChange: setRightKey, answers, placeholder: '右边：选一条回答' }),
+                h(Picker, { key: 'ls', value: leftKey, onChange: setLeftKey, items: answerItems, placeholder: '左边：选一条回答', label: '左' }),
+                h(Picker, { key: 'rs', value: rightKey, onChange: setRightKey, items: answerItems, placeholder: '右边：选一条回答', label: '右' }),
                 h(
                   'button',
                   { key: 'swap', className: 'sc-btn', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
                   '⇄ 交换'
                 ),
                 pairs.length > 0
-                  ? h(
-                      'select',
-                      {
-                        key: 'pair',
-                        className: 'sc-sel',
-                        title: '同一个问题问过多次，直接选那一对',
-                        onChange: (e) => {
-                          const pair = pairs[Number(e.target.value)]
-                          if (!pair) return
-                          setLeftKey(pair.left.key)
-                          setRightKey(pair.right.key)
-                        },
+                  ? h(Picker, {
+                      key: 'pair',
+                      value: null,
+                      onChange: (v) => {
+                        const pair = pairs[Number(v)]
+                        if (!pair) return
+                        setLeftKey(pair.left.key)
+                        setRightKey(pair.right.key)
                       },
-                      h('option', { value: '' }, `自动配对（${pairs.length} 对）`),
-                      pairs.map((p, i) => h('option', { key: p.id, value: String(i) }, `#${p.from} × #${p.to} · ${p.question.slice(0, 26)}`))
-                    )
+                      items: pairItems,
+                      placeholder: `自动配对（${pairs.length} 对）`,
+                      title: '同一个问题问过多次，直接选那一对',
+                    })
                   : null,
                 h('input', { key: 'filter', className: 'sc-input', placeholder: '搜索关键词', value: filter, onChange: (e) => setFilter(e.target.value) }),
                 result
