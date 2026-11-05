@@ -11,8 +11,9 @@ const RULES = join(DSH, 'scalpel-drop.json')
 const AUDIT = join(DSH, 'scalpel-audit.jsonl')
 
 const args = process.argv.slice(2)
-const cmd = args[0]
-const BOOL_FLAGS = new Set(['json', 'dry', 'all', 'print', 'help'])
+const RAW = args[0]
+const cmd = RAW === '--help' || RAW === '-h' ? 'help' : RAW === '-v' || RAW === '--version' ? 'version' : RAW
+const BOOL_FLAGS = new Set(['json', 'dry', 'all', 'print', 'help', 'version'])
 const flag = (name, fallback = null) => {
   const i = args.indexOf(`--${name}`)
   const next = args[i + 1]
@@ -167,6 +168,15 @@ const commands = {
     const limit = Number(flag('limit', 20))
     const lines = readFileSync(AUDIT, 'utf8').trim().split('\n').slice(-limit)
     for (const l of lines) console.log(l)
+  },
+
+  version() {
+    try {
+      const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+      console.log(`dsh-scalpel ${pkg.version}`)
+    } catch {
+      console.log('dsh-scalpel (version unknown)')
+    }
   },
 
   help() {
