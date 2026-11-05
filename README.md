@@ -159,10 +159,21 @@ node bin/scalpel.mjs rules
 
 ## Roadmap
 
+v1 之前列的：
+
 - 自动配对：同一问题问了两遍，自动把两次回答配成一对
 - 话题分段：长会话按话题切开，可整段屏蔽
 - 面板内的 dry-run 预览与一键撤销
 - `/compare` `/drop` 两个会话内命令
+
+从 [AgentActa](https://github.com/elegant01/agent-acta) 借来的（它是同类日志面板，这两条已经被证明有用）：
+
+- 对比面板的指标行：耗时 / 模型 / token / cache 读取 / 工具次数，每格标"谁大、差多少"。数据都在 `assistant/message.data.usage` 与 `turn/start..turn/end` 里
+- 上下文占用与删除报价：`request/context.data.contextWindow` 给出窗口大小，`drop --dry` 就能报"省 N tokens ≈ 窗口的 X%"，比现在的字符数有意义
+- 单轮导出：把"将被摘掉的轮次"原文 + 解析结果 + 版本指纹导成 JSON，删除前留证据
+- 全文搜索定位：不知道 B 是第几轮时，借 AgentActa 的索引（`127.0.0.1:14570/api/search`）找，没跑就退回按轮次序号
+
+有意不搬的（都在它的 README 里）：历史归档冻结（DSH 的 session 文件本身就是真相源，再存一份是明文重复）、32 家 agent 解析器、慢轮排行与工具失败画像（那是日志分析，不是动上下文；本机已装 AgentActa 当 DSH 插件，重复建设）、SSE 流式双列对比（两边状态一乱就不可信）。子会话拓扑也先不做——本机 39 个会话头里只有 `delegationDepth`，全是 0，没有父链字段可读。
 
 ## License
 
