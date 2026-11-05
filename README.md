@@ -113,10 +113,23 @@ scalpel drop <session|latest> --from N [--to M] [--dry]
 scalpel undrop <session|latest> [--all]
 scalpel rules
 scalpel audit [--limit N]
+scalpel doctor          # 装了但没生效时先用它
 scalpel --version | --help
 ```
 
 会话数据来自 `~/.dsh/sessions/<workspace>/session-<uuid>/session.v4.jsonl.zstd`（多帧 zstd，按 magic `28 B5 2F FD` 切帧解压，Node 22 内置 `zstdDecompressSync` 直接读，无第三方依赖）。
+
+**大会话怎么读的**：逐帧解压、逐行解析，读完即弃；只留 12 类事件（`turn/start` `turn/end` `step/start` `step/end` `user/message` `assistant/message` `tool/call` `tool/result` `session` `session/title` `model/selection` `request/context`），工具入参截到 400 字、工具返回只留 callId、流式增量与每轮重复的完整工具表直接丢掉。本机实测：14.7 MB 的会话解出来峰值内存 ~101 MB、1 秒（不瘦身会是几百 MB，一次多读几个就 OOM）。
+
+## 装了但没生效？
+
+```
+scalpel doctor
+```
+
+一次列出：Node 有没有 zstd、`exports["./client"]` 在不在、`dsh.client` 的 `platform/immediately` 对不对、`dsh.bundle.patch` 指的文件在不在、宿主半能不能 import、profile 里**依赖**和 **`dsh.profile.bundles`** 两处都写了没、`node_modules/dsh-scalpel` 的 realpath 是不是这一份、规则文件能不能解析、审计日志可写、探针多久没更新（探针是宿主半第一次跑 pre-step 时写的，没写说明它没被加载）。全部只读，有 fail 时退出码 1。
+
+两个最常见的坑它直接点出来：**只加了依赖没加 `dsh.profile.bundles`**（宿主不加载，不报错）和 **bundle 是开机捕获的**（改完只刷新页面没用，探针时间戳会暴露这一点）。
 
 ## 什么时候**别**用它
 
