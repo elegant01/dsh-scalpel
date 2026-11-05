@@ -24,6 +24,11 @@ DeepSeek Harness 的**上下文手术刀**。只做两件事：
 - 规则按 `sessionId + 轮号区间` 存在 `~/.dsh/scalpel-drop.json`，每轮重读，改规则**不用重启**；
 - 每轮摘了几条、省了多少字符，写进 `~/.dsh/scalpel-audit.jsonl`。
 
+两个容易踩的定义：
+
+- **轮**从一条真人提问开始。工具返回（`role: "user"` + `tool_result` 块）不另起一轮，否则轮号会和面板、CLI 差一位。
+- 宿主给的是 `session-<uuid>`，CLI 和面板用的是裸 `<uuid>`。两边都做了归一化，所以规则写哪种都能命中；旧文件里带前缀的写法也不会失效。
+
 代价（是设计选择，不是 bug）：
 
 | 现象 | 原因 |
@@ -88,7 +93,7 @@ scalpel compare latest --a 1 --b 2 --json   # 结构化输出，给别的工具�
 面板里也能做：顶部切到 **删除范围**，回合表里点两下行选一个区间，面板立刻报"屏蔽后少多少字、占全会话几成"，下面三条命令直接复制去终端执行（先 `--dry` 试算，再写规则，出问题 `undrop` 全撤）。选区间不会碰会话文件，只写规则。
 
 ```sh
-scalpel drop latest --from 5 --to 7 --dry   # 先看图什么会被摘掉（只写审计）
+scalpel drop latest --from 5 --to 7 --dry   # 只打印将写入的规则，不落盘
 scalpel drop latest --from 5 --to 7         # 真摘
 scalpel undrop latest                       # 全撤
 scalpel rules                               # 当前规则
@@ -161,7 +166,10 @@ scalpel doctor
 node --check client.js
 node --check bin/scalpel.mjs
 node bin/scalpel.mjs rules
+npm test        # 宿主半：轮切分、区间钳制、dryRun、审计，用临时 HOME 跑真实 lib/index.js
 ```
+
+`test/host.test.mjs` 会 `mkdtemp` 一个假 HOME、动态 `import` `lib/index.js`，再直接喂假的 `agent/pre-step` 事件，所以不用装 DSH 也能验行为。客户端半另有离线渲染检查：把 `client.js` 塞进桩化的 `window.__ModuleLoader__` + React hooks 里执行一遍，任何未定义变量都会在这里炸出来，不会跑到界面上变成空白页。
 
 ## Roadmap
 

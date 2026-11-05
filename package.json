@@ -29,6 +29,9 @@
   "bin": {
     "scalpel": "./bin/scalpel.mjs"
   },
+  "scripts": {
+    "test": "node --test test/host.test.mjs"
+  },
   "files": [
     "lib",
     "bin",

@@ -455,6 +455,9 @@ window.__ModuleLoader__.load({
       }
 
       const cells = []
+      // A render bug must never leave the tab blank: catch it and show the reason.
+      let dropPanel = null
+      try {
       rows.forEach((r, i) => {
         if (r.same) {
           cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, markHits(r.left, filter)))
@@ -525,7 +528,7 @@ window.__ModuleLoader__.load({
             ]
           : null
 
-      const dropPanel = h(
+      dropPanel = h(
         'div',
         { className: 'sc-drop' },
         h(
@@ -537,7 +540,7 @@ window.__ModuleLoader__.load({
         ),
         h('div', { className: 'sc-turns' }, turnRows),
         cmds,
-        h('div', { className: 'sc-note', style: { padding: '0 14px 12px' } }, dropTurns > 0 ? `规则写进 ~/.dsh/scalpel-drop.json 后，下一轮起第 ${dropFrom}–${dropTo} 轮不再发给模型（原始会话记录不动，界面也不消失）。` : '选好区间后，复制下面的命令在任何终端执行；dry 只记账不改行为。')
+        h('div', { className: 'sc-note', style: { padding: '0 14px 12px' } }, droppedTurns > 0 ? `规则写进 ~/.dsh/scalpel-drop.json 后，下一轮起第 ${dropFrom}–${dropTo} 轮不再发给模型（原始会话记录不动，界面也不消失）。` : '选好区间后，复制下面的命令在任何终端执行；dry 只打印规则、不落盘。')
       )
 
       return h(
@@ -599,6 +602,14 @@ window.__ModuleLoader__.load({
         ),
         note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? h('div', { className: 'sc-grid' }, cells) : dropPanel
       )
+      } catch (err) {
+        console.warn('[dsh-scalpel] render failed: ' + (err?.message ?? err))
+        return h(
+          'div',
+          { className: 'sc-page' },
+          h('div', { className: 'sc-note' }, '面板渲染出错：' + (err?.message ?? err) + '（把这句话发给我就能定位）')
+        )
+      }
     }
 
     // ---- action-row button: open the comparator right here (useChat is given by standardProps) ----
