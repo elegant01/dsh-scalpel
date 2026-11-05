@@ -223,32 +223,57 @@ window.__ModuleLoader__.load({
     // switches to this view. Module scope = one instance per page.
     const request = { messageId: null }
 
-    // ---- styles ----
-    const S = {
-      page: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: 'var(--dsh-text-primary, #dfe4ec)', fontSize: 13 },
-      head: { display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid rgba(128,140,160,.18)', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 2, background: 'var(--dsh-bg-primary, #101318)' },
-      sel: { maxWidth: 300, padding: '4px 6px', borderRadius: 6, border: '1px solid rgba(128,140,160,.28)', background: 'transparent', color: 'inherit', fontSize: 12 },
-      stat: { opacity: 0.65, fontSize: 12 },
-      btn: { padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(128,140,160,.28)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 12 },
-      grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1, minHeight: 0, overflow: 'auto' },
-      cell: { padding: '8px 16px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6, borderRight: '1px solid rgba(128,140,160,.10)' },
-      empty: { padding: '28px 20px', opacity: 0.7, lineHeight: 1.8 },
-      del: { background: 'rgba(255,96,96,.16)', color: '#ff9d9d', textDecoration: 'line-through' },
-      ins: { background: 'rgba(96,220,150,.16)', color: '#8ee0ad' },
-      changedBg: { background: 'rgba(255,180,70,.05)' },
-      onlyL: { background: 'rgba(255,96,96,.09)' },
-      onlyR: { background: 'rgba(96,220,150,.09)' },
-      overlay: { position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3vh 3vw' },
-      box: { width: '100%', maxWidth: 1440, height: '100%', maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 14, overflow: 'hidden' },
+    // ---- styles: only DSH theme tokens (no hardcoded colors) ----
+    const CSS = [
+      '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
+      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
+      '.sc-sel{height:28px;max-width:320px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer}',
+      '.sc-sel:hover{border-color:var(--dsw-alias-border-l3)}',
+      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
+      '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-btn:active{background:var(--dsw-alias-interactive-bg-active)}',
+      '.sc-action{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;cursor:pointer}',
+      '.sc-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-stat{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
+      '.sc-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;cursor:pointer}',
+      '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer}',
+      '.sc-grid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;align-content:start;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+      '.sc-cell{padding:8px 14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}',
+      '.sc-cell:nth-child(odd){border-right:.5px solid var(--dsw-alias-border-l1)}',
+      '.sc-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-tertiary) 30%,transparent)}',
+      '.sc-only-l{border-left:2px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-code-diff-deleted)}',
+      '.sc-only-r{border-left:2px solid var(--dsw-alias-state-success-primary);background:var(--dsw-alias-code-diff-added)}',
+      '.sc-del{background:var(--dsw-alias-code-diff-deleted);box-shadow:inset 2px 0 0 var(--dsw-alias-state-error-primary);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-primary)}',
+      '.sc-ins{background:var(--dsw-alias-code-diff-added);box-shadow:inset 2px 0 0 var(--dsw-alias-state-success-primary);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-primary)}',
+      '.sc-note{padding:28px 20px;color:var(--dsw-alias-label-tertiary);line-height:1.8}',
+      '.sc-mask{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:max(24px,3vh) 24px;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}',
+      '.sc-panel{width:100%;max-width:1440px;height:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;overflow:hidden;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-panel);box-shadow:var(--dsw-elevation-prominent)}',
+      '.sc-panel .sc-head{background:transparent}',
+      '.sc-panel ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2)}',
+    ].join('\n')
+
+    let styled = false
+    const ensureStyles = () => {
+      if (styled) return
+      styled = true
+      try {
+        if (document.querySelector('style[data-dsh-scalpel]')) return
+        const el = document.createElement('style')
+        el.setAttribute('data-dsh-scalpel', '')
+        el.textContent = CSS
+        document.head.appendChild(el)
+      } catch (err) {
+        console.warn('[dsh-scalpel] style injection failed: ' + (err?.message ?? err))
+      }
     }
 
     const spans = (ops, side) =>
-      ops.map((o, i) => h('span', { key: i, style: o.t === 'same' ? undefined : side === 'left' ? S.del : S.ins }, o.text))
+      ops.map((o, i) => h('span', { key: i, className: o.t === 'same' ? undefined : side === 'left' ? 'sc-del' : 'sc-ins' }, o.text))
 
     function Selector({ value, onChange, answers, placeholder }) {
       return h(
         'select',
-        { style: S.sel, value: value ?? '', onChange: (e) => onChange(e.target.value || null) },
+        { className: 'sc-sel', value: value ?? '', onChange: (e) => onChange(e.target.value || null) },
         h('option', { value: '' }, placeholder),
         answers.map((a) =>
           h('option', { key: a.key, value: a.key }, `#${a.turn}${a.time ? ' ' + clock(a.time) : ''} · ${a.chars}字 · ${a.text.slice(0, 22).replace(/\s+/g, ' ')}`)
@@ -257,6 +282,7 @@ window.__ModuleLoader__.load({
     }
 
     function CompareView(props) {
+      ensureStyles()
       const useChat = props.useChat
       const [leftKey, setLeftKey] = React.useState(null)
       const [rightKey, setRightKey] = React.useState(null)
@@ -294,51 +320,52 @@ window.__ModuleLoader__.load({
       const cells = []
       rows.forEach((r, i) => {
         if (r.same) {
-          cells.push(h('div', { key: `l${i}`, style: S.cell }, r.left))
-          cells.push(h('div', { key: `r${i}`, style: S.cell }, r.right))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, r.left))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, r.right))
         } else if (r.left && r.right) {
           const d = diffTokens(r.left, r.right)
-          cells.push(h('div', { key: `l${i}`, style: { ...S.cell, ...S.changedBg } }, spans(d.left, 'left')))
-          cells.push(h('div', { key: `r${i}`, style: { ...S.cell, ...S.changedBg } }, spans(d.right, 'right')))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, spans(d.left, 'left')))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, spans(d.right, 'right')))
         } else if (r.left) {
-          cells.push(h('div', { key: `l${i}`, style: { ...S.cell, ...S.onlyL } }, r.left))
-          cells.push(h('div', { key: `r${i}`, style: S.cell }))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, r.left))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }))
         } else {
-          cells.push(h('div', { key: `l${i}`, style: S.cell }))
-          cells.push(h('div', { key: `r${i}`, style: { ...S.cell, ...S.onlyR } }, r.right))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, r.right))
         }
       })
 
       return h(
         'div',
-        { style: S.page, ...(props.onClose ? { borderRadius: 14, border: '1px solid rgba(128,140,160,.28)', background: '#101318', overflow: 'hidden' } : null) },
+        { className: 'sc-page' },
         h(
           'div',
-          { style: S.head },
+          { className: 'sc-head' },
           h(Selector, { value: leftKey, onChange: setLeftKey, answers, placeholder: '左边：选一条回答' }),
           h(Selector, { value: rightKey, onChange: setRightKey, answers, placeholder: '右边：选一条回答' }),
           h(
             'button',
-            { style: S.btn, onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
+            { className: 'sc-btn', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
             '⇄ 交换'
           ),
           result
-            ? h('span', { style: S.stat }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}`)
+            ? h('span', { className: 'sc-stat' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}`)
             : null,
           h(
             'label',
-            { style: { marginLeft: 'auto', cursor: 'pointer', fontSize: 12, opacity: 0.8 } },
+            { className: 'sc-toggle' },
             h('input', { type: 'checkbox', checked: onlyDiff, onChange: (e) => setOnlyDiff(e.target.checked) }),
             ' 仅看差异'
           ),
-          props.onClose ? h('button', { style: S.btn, onClick: props.onClose }, '关闭') : null
+          props.onClose ? h('button', { className: 'sc-btn', onClick: props.onClose }, '关闭') : null
         ),
-        note ? h('div', { style: S.empty }, note) : h('div', { style: S.grid }, cells)
+        note ? h('div', { className: 'sc-note' }, note) : h('div', { className: 'sc-grid' }, cells)
       )
     }
 
     // ---- action-row button: open the comparator right here (useChat is given by standardProps) ----
     function CompareAction(props) {
+      ensureStyles()
       const [open, setOpen] = React.useState(false)
       const close = () => setOpen(false)
       return h(
@@ -347,7 +374,7 @@ window.__ModuleLoader__.load({
         h(
           'button',
           {
-            style: S.btn,
+            className: 'sc-action',
             title: '对比这个会话里的两次回答',
             onClick: () => {
               request.messageId = props.messageId ?? null
@@ -359,12 +386,8 @@ window.__ModuleLoader__.load({
         open
           ? h(
               'div',
-              { style: S.overlay, onClick: close },
-              h(
-                'div',
-                { style: S.box, onClick: (e) => e.stopPropagation() },
-                h(CompareView, { useChat: props.useChat, onClose: close })
-              )
+              { className: 'sc-mask', onClick: close },
+              h('div', { className: 'sc-panel', onClick: (e) => e.stopPropagation() }, h(CompareView, { useChat: props.useChat, onClose: close }))
             )
           : null
       )
@@ -400,6 +423,7 @@ window.__ModuleLoader__.load({
           console.warn('[dsh-scalpel] React not reachable from the client loader; UI disabled.')
           return
         }
+        ensureStyles()
 
         mount(ctx, 'conversation.view', () =>
           ctx.slots.register(
