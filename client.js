@@ -187,30 +187,111 @@ window.__ModuleLoader__.load({
     const isTextBlock = (b) => b && (b.kind === 'text' || b.type === 'text') && typeof b.text === 'string'
     const textOf = (blocks) => (blocks ?? []).filter(isTextBlock).map((b) => b.text).join('\n\n')
 
-    const answersOf = (snapshot) => {
-      if (!snapshot) return []
-      const out = []
-      let turn = 0
+    const questionOf = (node) => textOf(node?.data?.blocks ?? node?.data?.content).replace(/\s+/g, ' ').trim()
+
+    // Walk the chat snapshot once: turns (user question) + the answers hanging off them.
+    const turnsOf = (snapshot) => {
+      const turns = []
+      if (!snapshot) return turns
+      let current = null
       for (const key of snapshot.order ?? []) {
         const node = snapshot.nodes?.get?.(key)
-        if (!node) continue
-        if (node.visibility === 'hidden') continue
-        if (node.kind === 'user') turn += 1
+        if (!node || node.visibility === 'hidden') continue
+        if (node.kind === 'user') {
+          current = { turn: turns.length + 1, question: questionOf(node), chars: 0, time: null, answers: [] }
+          turns.push(current)
+          continue
+        }
+        if (!current) continue
         if (node.kind !== 'assistant-step' && node.kind !== 'body') continue
         const data = node.data ?? {}
         const text = textOf(data.blocks ?? data.content).trim()
         if (!text) continue
-        out.push({
-          key,
-          turn,
-          messageId: data.finalNode?.messageId ?? data.messageId ?? key,
-          text,
-          chars: text.length,
-          time: data.time ?? node.time ?? null,
-        })
+        const time = data.time ?? node.time ?? null
+        current.answers.push({ key, messageId: data.finalNode?.messageId ?? data.messageId ?? key, text, chars: text.length, time })
+        current.chars += text.length
+        if (!current.time) current.time = time
+      }
+      return turns
+    }
+
+    const answersOf = (turns) => turns.flatMap((t) => t.answers.map((a) => ({ ...a, turn: t.turn, question: t.question })))
+
+    // Same question asked more than once → the two answers are directly comparable.
+    const autoPairs = (turns) => {
+      const byQuestion = new Map()
+      for (const t of turns) {
+        const k = norm(t.question)
+        if (!k || !t.answers.length) continue
+        const list = byQuestion.get(k) ?? []
+        list.push(t)
+        byQuestion.set(k, list)
+      }
+      const out = []
+      for (const group of byQuestion.values()) {
+        if (group.length < 2) continue
+        for (let i = 1; i < group.length; i += 1) {
+          const later = group[i]
+          const earlier = group[i - 1]
+          out.push({
+            id: `${later.turn}:${earlier.turn}`,
+            question: later.question,
+            from: earlier.turn,
+            to: later.turn,
+            left: later.answers[later.answers.length - 1],
+            right: earlier.answers[earlier.answers.length - 1],
+          })
+        }
       }
       return out
     }
+
+    const fallbackCopy = (text, done) => {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        done()
+      } catch (err) {
+        console.warn('[dsh-scalpel] copy failed: ' + (err?.message ?? err))
+      }
+    }
+
+    const markdownOf = (a, b, result) =>
+      `# dsh-scalpel 对比\n\n- 左：#${a.turn}（${a.chars} 字）\n- 右：#${b.turn}（${b.chars} 字）\n- 结构：${result.stats.total} 段，相同 ${result.stats.same}，改动 ${result.stats.changed}，单侧 ${result.stats.only}\n\n## 左 · #${a.turn}\n\n${a.text}\n\n## 右 · #${b.turn}\n\n${b.text}\n`
+
+    const markHits = (text, query) => {
+      const q = query.trim()
+      if (!q) return text
+      const low = text.toLowerCase()
+      const needle = q.toLowerCase()
+      const out = []
+      let at = 0
+      let i = low.indexOf(needle)
+      let n = 0
+      while (i >= 0) {
+        if (i > at) out.push(text.slice(at, i))
+        out.push(h('span', { key: `hit${n}`, className: 'sc-hit' }, text.slice(i, i + q.length)))
+        n += 1
+        at = i + q.length
+        i = low.indexOf(needle, at)
+      }
+      out.push(text.slice(at))
+      return out
+    }
+
+    const cmdCopy = (text, label, copy) =>
+      h(
+        'div',
+        { key: text, className: 'sc-cmd' },
+        h('code', null, text),
+        h('button', { className: 'sc-btn', onClick: () => copy(text, label) }, '复制')
+      )
 
     const clock = (ms) => {
       if (!ms) return ''
@@ -250,6 +331,24 @@ window.__ModuleLoader__.load({
       '.sc-panel{width:100%;max-width:1440px;height:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;overflow:hidden;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-panel);box-shadow:var(--dsw-elevation-prominent)}',
       '.sc-panel .sc-head{background:transparent}',
       '.sc-panel ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2)}',
+      '.sc-seg{display:inline-flex;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);overflow:hidden}',
+      '.sc-seg button{height:26px;padding:0 10px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;cursor:pointer}',
+      '.sc-seg button[data-on=true]{background:var(--dsw-alias-markdown-tag);color:var(--dsw-alias-label-primary)}',
+      '.sc-seg button:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.sc-input{height:28px;width:200px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;outline:none}',
+      '.sc-input::placeholder{color:var(--dsw-alias-label-dimmed)}',
+      '.sc-input:focus{border-color:var(--dsw-alias-state-business-primary)}',
+      '.sc-hit{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 24%,transparent);border-radius:var(--dsw-radius-xs)}',
+      '.sc-drop{flex:1;min-height:0;display:flex;flex-direction:column}',
+      '.sc-drop-head{display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.sc-turns{flex:0 1 auto;max-height:46vh;min-height:0;overflow:auto;padding:4px 14px 8px}',
+      '.sc-trow{display:grid;grid-template-columns:44px 52px 1fr 68px;gap:10px;align-items:baseline;padding:7px 8px;border-bottom:.5px solid var(--dsw-alias-border-l1);cursor:pointer;font-size:13px;line-height:20px}',
+      '.sc-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.sc-trow[data-in=true]{background:var(--dsw-alias-markdown-tag);box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary)}',
+      '.sc-dim{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
+      '.sc-cmd{display:flex;gap:8px;align-items:center;margin:6px 14px 10px;padding:6px 10px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-markdown-code-block)}',
+      '.sc-cmd code{flex:1;min-width:0;overflow:auto;white-space:pre;background:none;border:0;padding:0;color:var(--dsw-alias-label-primary);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:18px}',
+      '.sc-flash{color:var(--dsw-alias-state-success-primary);font-size:12px}',
     ].join('\n')
 
     let styled = false
@@ -287,9 +386,23 @@ window.__ModuleLoader__.load({
       const [leftKey, setLeftKey] = React.useState(null)
       const [rightKey, setRightKey] = React.useState(null)
       const [onlyDiff, setOnlyDiff] = React.useState(true)
+      const [filter, setFilter] = React.useState('')
+      const [mode, setMode] = React.useState('compare')
       const [note, setNote] = React.useState('')
+      const [flash, setFlash] = React.useState('')
+      const [from, setFrom] = React.useState(0)
+      const [to, setTo] = React.useState(0)
 
-      const answers = useChat ? answersOf(useChat((s) => s)) : []
+      const snapshot = useChat ? useChat((s) => s) : null
+      const turns = React.useMemo(() => turnsOf(snapshot), [snapshot])
+      const answers = React.useMemo(() => answersOf(turns), [turns])
+      const pairs = React.useMemo(() => autoPairs(turns), [turns])
+
+      React.useEffect(() => {
+        if (!flash) return undefined
+        const timer = setTimeout(() => setFlash(''), 1600)
+        return () => clearTimeout(timer)
+      }, [flash])
 
       // honour a preselection handed over by the action-row button
       React.useEffect(() => {
@@ -301,39 +414,131 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         if (!useChat) setNote('这个插槽没有拿到会话快照（useChat 未注入），对比不可用。请把这条信息发给我。')
-        else if (!answers.length) setNote('这个会话里还没有可对比的回答。')
+        else if (answers.length < 2) setNote('这个会话里还没有足够的回答可以对比。')
         else setNote('')
       }, [useChat, answers.length])
 
-      // default: newest answer on the left, the one before it on the right
+      // default: the newest repeated question if any, otherwise the newest two answers
       React.useEffect(() => {
         if (answers.length < 2) return
-        if (!leftKey || !answers.some((a) => a.key === leftKey)) setLeftKey(answers[answers.length - 1].key)
-        if (!rightKey || !answers.some((a) => a.key === rightKey)) setRightKey(answers[answers.length - 2].key)
-      }, [answers.length])
+        const valid = (key) => key && answers.some((a) => a.key === key)
+        if (valid(leftKey) && valid(rightKey) && leftKey !== rightKey) return
+        const last = pairs[pairs.length - 1]
+        if (last) {
+          setLeftKey(last.left.key)
+          setRightKey(last.right.key)
+          return
+        }
+        setLeftKey(answers[answers.length - 1].key)
+        setRightKey(answers[answers.length - 2].key)
+      }, [answers.length, pairs.length])
 
       const a = answers.find((x) => x.key === leftKey)
       const b = answers.find((x) => x.key === rightKey)
       const result = a && b && a.key !== b.key ? compare(a.text, b.text) : null
-      const rows = (result?.rows ?? []).filter((r) => !onlyDiff || !r.same)
+      const query = filter.trim().toLowerCase()
+      const rows = (result?.rows ?? [])
+        .filter((r) => !onlyDiff || !r.same)
+        .filter((r) => !query || (r.left ?? '').toLowerCase().includes(query) || (r.right ?? '').toLowerCase().includes(query))
+
+      const copy = (text, label) => {
+        const done = () => setFlash(label)
+        try {
+          if (navigator?.clipboard?.writeText) {
+            navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done))
+            return
+          }
+        } catch (err) {
+          // fall through to the legacy path
+        }
+        fallbackCopy(text, done)
+      }
 
       const cells = []
       rows.forEach((r, i) => {
         if (r.same) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, r.left))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, r.right))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, markHits(r.left, filter)))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, markHits(r.right, filter)))
         } else if (r.left && r.right) {
           const d = diffTokens(r.left, r.right)
           cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, spans(d.left, 'left')))
           cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, spans(d.right, 'right')))
         } else if (r.left) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, r.left))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, markHits(r.left, filter)))
           cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }))
         } else {
           cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, r.right))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, markHits(r.right, filter)))
         }
       })
+
+      // ---- drop mode: pick a turn range, copy a CLI command that records the rule ----
+      const sid = String(props.sessionId ?? '').replace(/[^0-9a-zA-Z-]/g, '').slice(0, 8) || 'latest'
+      const totalChars = turns.reduce((n, t) => n + t.chars, 0)
+      const dropFrom = from || 0
+      const dropTo = to || from || 0
+      const inRange = (turn) => dropFrom > 0 && turn >= dropFrom && turn <= dropTo
+      const droppedChars = turns.filter((t) => inRange(t.turn)).reduce((n, t) => n + t.chars, 0)
+      const droppedTurns = dropFrom > 0 ? dropTo - dropFrom + 1 : 0
+      const share = totalChars ? Math.round((droppedChars / totalChars) * 100) : 0
+
+      const pick = (turn) => {
+        if (!from || (from && to)) {
+          setFrom(turn)
+          setTo(0)
+          return
+        }
+        if (turn < from) {
+          setFrom(turn)
+          setTo(0)
+          return
+        }
+        if (turn === from) {
+          setTo(0)
+          return
+        }
+        setTo(turn)
+      }
+
+      const turnRows = turns.map((t) =>
+        h(
+          'div',
+          {
+            key: `t${t.turn}`,
+            className: 'sc-trow',
+            'data-in': inRange(t.turn) ? 'true' : 'false',
+            onClick: () => pick(t.turn),
+          },
+          h('span', { className: 'sc-dim' }, `#${t.turn}`),
+          h('span', { className: 'sc-dim' }, t.time ? clock(t.time) : ''),
+          h('span', null, t.question || '（无提问文本）'),
+          h('span', { className: 'sc-stat' }, `${t.chars} 字`)
+        )
+      )
+
+      const cmds =
+        dropFrom > 0
+          ? [
+              cmdCopy(`scalpel drop ${sid} --from ${dropFrom} --to ${dropTo} --dry`, '已复制：先试算', copy),
+              cmdCopy(`scalpel drop ${sid} --from ${dropFrom} --to ${dropTo}`, '已复制：写入规则', copy),
+              cmdCopy(`scalpel undrop ${sid} --all`, '已复制：撤销全部', copy),
+            ]
+          : null
+
+      const dropPanel = h(
+        'div',
+        { className: 'sc-drop' },
+        h(
+          'div',
+          { className: 'sc-drop-head' },
+          h('span', { className: 'sc-stat' }, `${turns.length} 轮 · ${totalChars} 字`),
+          h('span', { className: 'sc-dim' }, dropFrom > 0 ? `已选 #${dropFrom}–#${dropTo} · 屏蔽后少 ${droppedChars} 字（${share}%）` : '点两下行选一个区间'),
+          dropFrom > 0 ? h('button', { className: 'sc-btn', onClick: () => { setFrom(0); setTo(0) } }, '清除') : null
+        ),
+        h('div', { className: 'sc-turns' }, turnRows),
+        cmds,
+        h('div', { className: 'sc-note', style: { padding: '0 14px 12px' } }, dropTurns > 0 ? `规则写进 ~/.dsh/scalpel-drop.json 后，下一轮起第 ${dropFrom}–${dropTo} 轮不再发给模型（原始会话记录不动，界面也不消失）。` : '选好区间后，复制下面的命令在任何终端执行；dry 只记账不改行为。')
+      )
 
       return h(
         'div',
@@ -341,25 +546,58 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'sc-head' },
-          h(Selector, { value: leftKey, onChange: setLeftKey, answers, placeholder: '左边：选一条回答' }),
-          h(Selector, { value: rightKey, onChange: setRightKey, answers, placeholder: '右边：选一条回答' }),
           h(
-            'button',
-            { className: 'sc-btn', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
-            '⇄ 交换'
+            'div',
+            { className: 'sc-seg' },
+            h('button', { 'data-on': mode === 'compare' ? 'true' : 'false', onClick: () => setMode('compare') }, '对比'),
+            h('button', { 'data-on': mode === 'drop' ? 'true' : 'false', onClick: () => setMode('drop') }, '删除范围')
           ),
-          result
-            ? h('span', { className: 'sc-stat' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}`)
+          mode === 'compare'
+            ? [
+                h(Selector, { key: 'ls', value: leftKey, onChange: setLeftKey, answers, placeholder: '左边：选一条回答' }),
+                h(Selector, { key: 'rs', value: rightKey, onChange: setRightKey, answers, placeholder: '右边：选一条回答' }),
+                h(
+                  'button',
+                  { key: 'swap', className: 'sc-btn', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
+                  '⇄ 交换'
+                ),
+                pairs.length > 0
+                  ? h(
+                      'select',
+                      {
+                        key: 'pair',
+                        className: 'sc-sel',
+                        title: '同一个问题问过多次，直接选那一对',
+                        onChange: (e) => {
+                          const pair = pairs[Number(e.target.value)]
+                          if (!pair) return
+                          setLeftKey(pair.left.key)
+                          setRightKey(pair.right.key)
+                        },
+                      },
+                      h('option', { value: '' }, `自动配对（${pairs.length} 对）`),
+                      pairs.map((p, i) => h('option', { key: p.id, value: String(i) }, `#${p.from} × #${p.to} · ${p.question.slice(0, 26)}`))
+                    )
+                  : null,
+                h('input', { key: 'filter', className: 'sc-input', placeholder: '搜索关键词', value: filter, onChange: (e) => setFilter(e.target.value) }),
+                result
+                  ? h('span', { key: 'stat', className: 'sc-stat' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}${query ? ` · 命中 ${rows.length} 段` : ''}`)
+                  : null,
+                h(
+                  'label',
+                  { key: 'only', className: 'sc-toggle' },
+                  h('input', { type: 'checkbox', checked: onlyDiff, onChange: (e) => setOnlyDiff(e.target.checked) }),
+                  ' 仅看差异'
+                ),
+                result
+                  ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result), '已复制 Markdown') }, '复制 Markdown')
+                  : null,
+              ]
             : null,
-          h(
-            'label',
-            { className: 'sc-toggle' },
-            h('input', { type: 'checkbox', checked: onlyDiff, onChange: (e) => setOnlyDiff(e.target.checked) }),
-            ' 仅看差异'
-          ),
+          flash ? h('span', { className: 'sc-flash' }, flash) : null,
           props.onClose ? h('button', { className: 'sc-btn', onClick: props.onClose }, '关闭') : null
         ),
-        note ? h('div', { className: 'sc-note' }, note) : h('div', { className: 'sc-grid' }, cells)
+        note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? h('div', { className: 'sc-grid' }, cells) : dropPanel
       )
     }
 
@@ -387,7 +625,7 @@ window.__ModuleLoader__.load({
           ? h(
               'div',
               { className: 'sc-mask', onClick: close },
-              h('div', { className: 'sc-panel', onClick: (e) => e.stopPropagation() }, h(CompareView, { useChat: props.useChat, onClose: close }))
+              h('div', { className: 'sc-panel', onClick: (e) => e.stopPropagation() }, h(CompareView, { useChat: props.useChat, sessionId: props.sessionId, onClose: close }))
             )
           : null
       )

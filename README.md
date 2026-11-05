@@ -68,6 +68,10 @@ mklink /J "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-scalpel" "F:\cen
 
 面板里：左边选一条回答、右边选一条，`⇄` 交换，`仅看差异` 关掉相同段。统计行给的是 `总段数 · 相同 · 改动 · 单侧`。
 
+- **自动配对**：同一个问题问了两遍以上，下拉里直接有形如 `#3 × #9 · 那句问题` 的选项，点一下就把两次回答摆到左右；没有重复提问时默认选最近两条。
+- **搜索**：输入关键词只留命中的段，命中处在行内高亮，统计行同时报 `命中 N 段`。
+- **复制 Markdown**：把左右两条回答 + 统计导成 md，粘到 issue / 文档 / 另一台机器继续 diff。
+
 命令行：
 
 ```sh
@@ -80,6 +84,8 @@ scalpel compare latest --a 1 --b 2 --json   # 结构化输出，给别的工具�
 `<session>` 可以是**会话 id 前缀**、**文件路径**，或 `latest`。
 
 ## 用法：剔除
+
+面板里也能做：顶部切到 **删除范围**，回合表里点两下行选一个区间，面板立刻报"屏蔽后少多少字、占全会话几成"，下面三条命令直接复制去终端执行（先 `--dry` 试算，再写规则，出问题 `undrop` 全撤）。选区间不会碰会话文件，只写规则。
 
 ```sh
 scalpel drop latest --from 5 --to 7 --dry   # 先看图什么会被摘掉（只写审计）
@@ -143,7 +149,7 @@ scalpel doctor
 | `lib/index.js` | 宿主半：pre-step 过滤、规则读写、审计、首轮探针 |
 | `lib/compare-core.js` | 纯函数对比核心（分块 / LCS 对齐 / 词级 diff），宿主与浏览器共用 |
 | `lib/session.js` | 会话文件解码与轮次提取 |
-| `client.js` | 客户端半：对比 tab、⚖ 按钮、对比面板 |
+| `client.js` | 客户端半：对比 tab、⚖ 按钮、对比面板（对比 / 删除范围两种模式、自动配对、搜索、复制 Markdown） |
 | `bin/scalpel.mjs` | CLI |
 | `cordis.patch.yml` | 挂载入口 |
 
@@ -161,10 +167,10 @@ node bin/scalpel.mjs rules
 
 v1 之前列的：
 
-- 自动配对：同一问题问了两遍，自动把两次回答配成一对
+- ~~自动配对：同一问题问了两遍，自动把两次回答配成一对~~ ✓
 - 话题分段：长会话按话题切开，可整段屏蔽
-- 面板内的 dry-run 预览与一键撤销
-- `/compare` `/drop` 两个会话内命令
+- ~~面板内的 dry-run 预览与一键撤销~~ ✓（预览省多少字、生成 dry/真删/撤销三条命令）
+- `/compare` `/drop` 两个会话内命令（现在要回终端；面板只给命令文本）
 
 从 [AgentActa](https://github.com/elegant01/agent-acta) 借来的（它是同类日志面板，这两条已经被证明有用）：
 
