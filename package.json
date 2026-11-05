@@ -1,0 +1,54 @@
+{
+  "name": "dsh-scalpel",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Context surgery for DeepSeek Harness: compare two answers in the same session, and drop chosen turns from every later model request.",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "context",
+    "diff",
+    "compare"
+  ],
+  "license": "MIT",
+  "author": "elegant01",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elegant01/dsh-scalpel.git"
+  },
+  "homepage": "https://github.com/elegant01/dsh-scalpel#readme",
+  "bugs": {
+    "url": "https://github.com/elegant01/dsh-scalpel/issues"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "scalpel": "./bin/scalpel.mjs"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.1 <0.2.2"
+  }
+}
