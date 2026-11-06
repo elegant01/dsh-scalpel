@@ -234,12 +234,12 @@ window.__ModuleLoader__.load({
           const later = group[i]
           const earlier = group[i - 1]
           out.push({
-            id: `${later.turn}:${earlier.turn}`,
+            id: `${earlier.turn}:${later.turn}`,
             question: later.question,
             from: earlier.turn,
             to: later.turn,
-            left: later.answers[later.answers.length - 1],
-            right: earlier.answers[earlier.answers.length - 1],
+            left: earlier.answers[earlier.answers.length - 1],
+            right: later.answers[later.answers.length - 1],
           })
         }
       }
@@ -307,7 +307,7 @@ window.__ModuleLoader__.load({
     // ---- styles: only DSH theme tokens (no hardcoded colors) ----
     const CSS = [
       '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
-      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;padding:6px 14px 0;min-height:38px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
+      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;padding:8px 16px;min-height:44px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
       '.sc-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
       '.sc-grow{flex:1;min-width:0}',
       // selects/buttons follow the model-picker idiom in ui-model-selection:
@@ -328,8 +328,8 @@ window.__ModuleLoader__.load({
       '.sc-mi-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sc-mi-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);font-size:12px;text-align:center}',
       '.sc-mi-sub{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
-      '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 11px;border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12.5px;line-height:20px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
+      '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}',
       '.sc-btn:active{background:var(--dsw-alias-interactive-bg-active)}',
       '.sc-btn-solid{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}',
       '.sc-btn-solid:hover{background:var(--dsw-alias-interactive-bg-active)}',
@@ -337,9 +337,9 @@ window.__ModuleLoader__.load({
       '.sc-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-stat{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
       '.sc-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;cursor:pointer}',
-      '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer}',
-      '.sc-grid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;align-content:start;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
-      '.sc-cell{padding:10px 16px;white-space:normal;overflow-wrap:anywhere;line-height:1.72}',
+      '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}',
+      '.sc-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:12px 16px 20px;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+      '.sc-cell{padding:0;white-space:normal;overflow-wrap:anywhere;line-height:1.72}',
       '.sc-bd>:last-child{margin-bottom:0}',
       '.sc-line{margin:0}',
       '.sc-gap{height:.7em}',
@@ -349,10 +349,36 @@ window.__ModuleLoader__.load({
       '.sc-quote{border-left:2px solid var(--dsw-alias-border-l3);padding-left:10px;color:var(--dsw-alias-label-secondary)}',
       '.sc-code{display:block;margin:6px 0;padding:10px 12px;overflow:auto;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12.5px;line-height:1.6;white-space:pre}',
       '.sc-ic{padding:1px 5px;border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-markdown-inline-code);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:.94em}',
-      '.sc-cell:nth-child(odd){border-right:.5px solid var(--dsw-alias-border-l1)}',
-      '.sc-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 7%,var(--dsw-alias-bg-base))}',
-      '.sc-only-l{border-left:2px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-code-diff-deleted)}',
-      '.sc-only-r{border-left:2px solid var(--dsw-alias-state-success-primary);background:var(--dsw-alias-code-diff-added)}',
+      // ---- two-column compare, laid out like agent-acta's 两轮对比 dialog:
+      // a VS header, a bordered metric table, then one bordered card pair per block.
+      '.sc-vshead{display:flex;align-items:stretch;gap:14px;margin:2px 0 2px}',
+      '.sc-vh{flex:1;min-width:0;padding:0}',
+      '.sc-vh-l{border-right:.5px solid var(--dsw-alias-border-l1);padding-right:14px}',
+      '.sc-vh-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);min-width:0}',
+      '.sc-vh-title span.t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-vh-meta{margin-top:4px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-vs{flex:none;align-self:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--dsw-alias-label-dimmed)}',
+      '.sc-metrics{border:.5px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}',
+      '.sc-mrow{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:.5px solid var(--dsw-alias-border-l1);min-width:0}',
+      '.sc-mrow:last-child{border-bottom:none}',
+      '.sc-mlabel{flex:none;width:96px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
+      '.sc-mhot{font-size:11px;font-weight:700;color:var(--dsw-alias-brand-primary)}',
+      '.sc-mval{flex:1;min-width:0;font-size:13px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-mval.big{color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.sc-mspan{flex:1;min-width:0;font-size:12.5px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-sec{display:flex;flex-direction:column;gap:6px}',
+      '.sc-sec-h{display:flex;align-items:center;gap:8px;min-height:20px}',
+      '.sc-sec-idx{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
+      '.sc-tag{flex:none;font-size:11px;font-weight:600;line-height:17px;padding:0 7px;border-radius:20px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}',
+      '.sc-tag-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 16%,transparent);color:var(--dsw-alias-state-warn-primary)}',
+      '.sc-tag-left{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 14%,transparent);color:var(--dsw-alias-state-error-primary)}',
+      '.sc-tag-right{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);color:var(--dsw-alias-state-success-primary)}',
+      '.sc-sec-cols{display:flex;gap:14px;align-items:flex-start}',
+      '.sc-col{flex:1;min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px}',
+      '.sc-col-empty{color:var(--dsw-alias-label-dimmed);font-size:12.5px}',
+      '.sc-changed{box-shadow:inset 2px 0 0 color-mix(in srgb,var(--dsw-alias-state-warn-primary) 60%,transparent)}',
+      '.sc-only-l{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 35%,var(--dsw-alias-border-l1));background:var(--dsw-alias-code-diff-deleted)}',
+      '.sc-only-r{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 35%,var(--dsw-alias-border-l1));background:var(--dsw-alias-code-diff-added)}',
       '.sc-del{background:var(--dsw-alias-code-diff-deleted);box-shadow:inset 2px 0 0 var(--dsw-alias-state-error-primary);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-primary)}',
       '.sc-ins{background:var(--dsw-alias-code-diff-added);box-shadow:inset 2px 0 0 var(--dsw-alias-state-success-primary);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-primary)}',
       '.sc-note{padding:28px 20px;color:var(--dsw-alias-label-tertiary);line-height:1.8}',
@@ -360,15 +386,12 @@ window.__ModuleLoader__.load({
       '.sc-panel{width:100%;max-width:1440px;height:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;overflow:hidden;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-panel);box-shadow:var(--dsw-elevation-prominent)}',
       '.sc-panel .sc-head{background:transparent}',
       '.sc-panel ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2)}',
-      // mode switch = the same tab idiom as the "对话 / 阅读" row in ui-conversation
-      '.sc-seg{display:flex;align-items:center;gap:24px;align-self:stretch;min-height:25px;margin-top:-2px}',
-      '.sc-seg button{position:relative;min-height:25px;padding:0 0 9px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:13px;font-weight:500;line-height:16px;cursor:pointer}',
-      '.sc-seg button::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:0 0}',
-      '.sc-seg button:hover{color:var(--dsw-alias-label-secondary)}',
-      '.sc-seg button[data-on=true]{color:var(--dsw-alias-state-business-primary)}',
-      '.sc-seg button[data-on=true]::after{background:var(--dsw-alias-state-business-primary)}',
-      '.sc-seg button:focus-visible{outline:none;color:var(--dsw-alias-state-business-primary)}',
-      '.sc-seg button:focus-visible::after{background:var(--dsw-alias-state-business-primary)}',
+      // mode switch = pill tabs (agent-acta's cmp-pick idiom), not the underline tab bar
+      '.sc-seg{display:flex;align-items:center;gap:6px;flex:none}',
+      '.sc-seg button{height:26px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:20px;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12.5px;font-weight:600;line-height:24px;cursor:pointer;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
+      '.sc-seg button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.sc-seg button[data-on=true]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-base)}',
+      '.sc-seg button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}',
       '.sc-input{height:28px;width:200px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;outline:none}',
       '.sc-input::placeholder{color:var(--dsw-alias-label-dimmed)}',
       '.sc-input:focus{border-color:var(--dsw-alias-state-business-primary)}',
@@ -594,8 +617,8 @@ window.__ModuleLoader__.load({
           setRightKey(last.right.key)
           return
         }
-        setLeftKey(answers[answers.length - 1].key)
-        setRightKey(answers[answers.length - 2].key)
+        setLeftKey(answers[answers.length - 2].key)
+        setRightKey(answers[answers.length - 1].key)
       }, [answers.length, pairs.length])
 
       const a = answers.find((x) => x.key === leftKey)
@@ -619,32 +642,92 @@ window.__ModuleLoader__.load({
         fallbackCopy(text, done)
       }
 
-      const cells = []
+      // ---- compare body: VS header + metric table + one card pair per block ----
       // A render bug must never leave the tab blank: catch it and show the reason.
       let dropPanel = null
       try {
       const cellBody = (text, key) => (wordDiff ? markHits(text, filter) : renderRich(text, key))
-      rows.forEach((r, i) => {
-        if (r.same) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, cellBody(r.left, `L${i}`)))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, cellBody(r.right, `R${i}`)))
-        } else if (r.left && r.right) {
-          if (wordDiff) {
-            const d = diffTokens(r.left, r.right)
-            cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, spans(d.left, 'left')))
-            cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, spans(d.right, 'right')))
-          } else {
-            cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, renderRich(r.left, `L${i}`)))
-            cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, renderRich(r.right, `R${i}`)))
-          }
-        } else if (r.left) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, cellBody(r.left, `L${i}`)))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }))
-        } else {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, cellBody(r.right, `R${i}`)))
-        }
+
+      const secs = rows.map((r, i) => {
+        const tagCls = r.same ? '' : r.left && r.right ? 'sc-tag-changed' : r.left ? 'sc-tag-left' : 'sc-tag-right'
+        const tagTxt = r.same ? '' : r.left && r.right ? '改动' : r.left ? '仅左' : '仅右'
+        const clsL = r.same ? '' : r.right ? 'sc-changed' : 'sc-only-l'
+        const clsR = r.same ? '' : r.left ? 'sc-changed' : 'sc-only-r'
+        const bodyL = wordDiff && r.left && r.right ? spans(diffTokens(r.left, r.right).left, 'left') : null
+        const bodyR = wordDiff && r.left && r.right ? spans(diffTokens(r.left, r.right).right, 'right') : null
+        return h(
+          'div',
+          { key: `sec${i}`, className: 'sc-sec' },
+          h(
+            'div',
+            { className: 'sc-sec-h' },
+            h('span', { className: 'sc-sec-idx' }, `段 ${i + 1}`),
+            tagTxt ? h('span', { className: 'sc-tag ' + tagCls }, tagTxt) : null
+          ),
+          h(
+            'div',
+            { className: 'sc-sec-cols' },
+            h(
+              'div',
+              { key: `L${i}`, className: 'sc-col' + (clsL ? ' ' + clsL : '') },
+              bodyL || (r.left ? cellBody(r.left, `L${i}`) : h('span', { className: 'sc-col-empty' }, '（无）'))
+            ),
+            h(
+              'div',
+              { key: `R${i}`, className: 'sc-col' + (clsR ? ' ' + clsR : '') },
+              bodyR || (r.right ? cellBody(r.right, `R${i}`) : h('span', { className: 'sc-col-empty' }, '（无）'))
+            )
+          )
+        )
       })
+
+      const mrow = (label, va, vb, hot, big) =>
+        h(
+          'div',
+          { key: label, className: 'sc-mrow' },
+          h('span', { className: 'sc-mlabel' }, label, hot ? h('b', { className: 'sc-mhot' }, hot) : null),
+          h('span', { className: 'sc-mval' + (big === 'a' ? ' big' : '') }, va),
+          h('span', { className: 'sc-mval' + (big === 'b' ? ' big' : '') }, vb)
+        )
+      const delta = b ? b.chars - a.chars : 0
+      const metrics = result && a && b
+        ? h(
+            'div',
+            { className: 'sc-metrics' },
+            mrow('字数', `${a.chars}`, `${b.chars}`, delta ? `差 ${Math.abs(delta)}` : '', delta > 0 ? 'b' : delta < 0 ? 'a' : ''),
+            h(
+              'div',
+              { key: 'struct', className: 'sc-mrow' },
+              h('span', { className: 'sc-mlabel' }, '结构'),
+              h(
+                'span',
+                { className: 'sc-mspan' },
+                `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 仅单侧 ${result.stats.only}`
+              )
+            )
+          )
+        : null
+
+      const vh = (side, ans) =>
+        h(
+          'div',
+          { className: 'sc-vh' + (side === '左' ? ' sc-vh-l' : '') },
+          h(
+            'div',
+            { className: 'sc-vh-title' },
+            h('span', { className: 't' }, ans ? `#${ans.turn}${ans.time ? ' · ' + clock(ans.time) : ''} · ${ans.chars} 字` : '未选择'),
+            h('span', { className: 'sc-tag' }, side)
+          ),
+          h('div', { className: 'sc-vh-meta' }, ans ? ans.question || '（无提问文本）' : '从上面的下拉里选一条回答')
+        )
+
+      const body = h(
+        'div',
+        { className: 'sc-body' },
+        h('div', { className: 'sc-vshead' }, vh('左', a), h('div', { className: 'sc-vs' }, 'VS'), vh('右', b)),
+        metrics,
+        secs.length ? secs : h('div', { className: 'sc-note' }, query ? '没有段落命中这个关键词。' : '两条回答完全一致，没有可对比的差异。')
+      )
 
       // ---- drop mode: pick a turn range, copy a CLI command that records the rule ----
       const sid = String(props.sessionId ?? '').replace(/[^0-9a-zA-Z-]/g, '').slice(0, 8) || 'latest'
@@ -726,9 +809,7 @@ window.__ModuleLoader__.load({
             h('button', { 'data-on': mode === 'compare' ? 'true' : 'false', onClick: () => setMode('compare') }, '对比'),
             h('button', { 'data-on': mode === 'drop' ? 'true' : 'false', onClick: () => setMode('drop') }, '删除范围')
           ),
-          result
-            ? h('span', { className: 'sc-stat sc-grow' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}${query ? ` · 命中 ${rows.length} 段` : ''}`)
-            : h('span', { className: 'sc-grow' }),
+          h('span', { className: 'sc-grow' }),
           flash ? h('span', { className: 'sc-flash' }, flash) : null,
           result
             ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result), '已复制 Markdown') }, '复制 Markdown')
@@ -776,7 +857,7 @@ window.__ModuleLoader__.load({
               )
             )
           : null,
-        note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? h('div', { className: 'sc-grid' }, cells) : dropPanel
+        note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? body : dropPanel
       )
       } catch (err) {
         console.warn('[dsh-scalpel] render failed: ' + (err?.message ?? err))
