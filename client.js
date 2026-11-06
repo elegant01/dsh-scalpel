@@ -307,7 +307,9 @@ window.__ModuleLoader__.load({
     // ---- styles: only DSH theme tokens (no hardcoded colors) ----
     const CSS = [
       '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
-      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
+      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;padding:6px 14px 0;min-height:38px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
+      '.sc-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.sc-grow{flex:1;min-width:0}',
       // selects/buttons follow the model-picker idiom in ui-model-selection:
       // ghost trigger + hover fill, popup on the shared "specific-menu" surface
       '.sc-sel{display:inline-flex;align-items:center;gap:4px;height:28px;max-width:320px;padding:0 4px 0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;font-weight:400;line-height:20px;cursor:pointer}',
@@ -315,6 +317,8 @@ window.__ModuleLoader__.load({
       '.sc-sel:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.sc-sel[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-sel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-tools .sc-sel{max-width:260px}',
+      '.sc-tools .sc-input{width:170px}',
       '.sc-sel-chev{flex:none;color:var(--dsw-alias-label-caption);font-size:10px;line-height:1;transform:translateY(-1px)}',
       '.sc-menu-wrap{position:relative;display:inline-flex;min-width:0}',
       '.sc-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:1100;display:flex;flex-direction:column;min-width:min(320px,90vw);max-width:min(460px,92vw);max-height:min(360px,60vh);overflow:auto;padding:4px;border:0;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2));backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2)}',
@@ -323,6 +327,7 @@ window.__ModuleLoader__.load({
       '.sc-mi[data-on=true]{background:var(--dsw-alias-interactive-bg-hover)}',
       '.sc-mi-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sc-mi-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);font-size:12px;text-align:center}',
+      '.sc-mi-sub{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
       '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-btn:active{background:var(--dsw-alias-interactive-bg-active)}',
@@ -334,9 +339,18 @@ window.__ModuleLoader__.load({
       '.sc-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;cursor:pointer}',
       '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer}',
       '.sc-grid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;align-content:start;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
-      '.sc-cell{padding:8px 14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}',
+      '.sc-cell{padding:10px 16px;white-space:normal;overflow-wrap:anywhere;line-height:1.72}',
+      '.sc-bd>:last-child{margin-bottom:0}',
+      '.sc-line{margin:0}',
+      '.sc-gap{height:.7em}',
+      '.sc-h{font-weight:600;margin:.2em 0}',
+      '.sc-li{display:flex;gap:6px}',
+      '.sc-li::before{content:"•";color:var(--dsw-alias-label-tertiary);flex:none}',
+      '.sc-quote{border-left:2px solid var(--dsw-alias-border-l3);padding-left:10px;color:var(--dsw-alias-label-secondary)}',
+      '.sc-code{display:block;margin:6px 0;padding:10px 12px;overflow:auto;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12.5px;line-height:1.6;white-space:pre}',
+      '.sc-ic{padding:1px 5px;border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-markdown-inline-code);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:.94em}',
       '.sc-cell:nth-child(odd){border-right:.5px solid var(--dsw-alias-border-l1)}',
-      '.sc-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-tertiary) 30%,transparent)}',
+      '.sc-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 7%,var(--dsw-alias-bg-base))}',
       '.sc-only-l{border-left:2px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-code-diff-deleted)}',
       '.sc-only-r{border-left:2px solid var(--dsw-alias-state-success-primary);background:var(--dsw-alias-code-diff-added)}',
       '.sc-del{background:var(--dsw-alias-code-diff-deleted);box-shadow:inset 2px 0 0 var(--dsw-alias-state-error-primary);border-radius:var(--dsw-radius-xs);color:var(--dsw-alias-label-primary)}',
@@ -388,6 +402,66 @@ window.__ModuleLoader__.load({
 
     const spans = (ops, side) =>
       ops.map((o, i) => h('span', { key: i, className: o.t === 'same' ? undefined : side === 'left' ? 'sc-del' : 'sc-ins' }, o.text))
+
+    // Answers are markdown; render the common subset instead of raw text so the
+    // page reads like the chat itself. Inline code / bold are enough here.
+    const inlineRich = (text, key) => {
+      const out = []
+      const re = /(`[^`]*`|\*\*[^*]+\*\*)/g
+      let last = 0
+      let i = 0
+      let m
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > last) out.push(text.slice(last, m.index))
+        const raw = m[0]
+        if (raw[0] === '`') out.push(h('code', { key: `${key}c${i}`, className: 'sc-ic' }, raw.slice(1, -1)))
+        else out.push(h('strong', { key: `${key}b${i}` }, raw.slice(2, -2)))
+        last = m.index + raw.length
+        i += 1
+      }
+      if (last < text.length) out.push(text.slice(last))
+      return out.length ? out : [text]
+    }
+
+    const renderRich = (text, key) => {
+      const nodes = []
+      String(text ?? '')
+        .split(/(```[\s\S]*?(?:```|$))/g)
+        .forEach((part, pi) => {
+          if (!part) return
+          if (part.startsWith('```')) {
+            const body = part.replace(/^```[^\n]*\n?/, '').replace(/```\s*$/, '')
+            nodes.push(h('pre', { key: `${key}p${pi}`, className: 'sc-code' }, body))
+            return
+          }
+          const kids = []
+          part.split('\n').forEach((line, li) => {
+            const s = line.trimEnd()
+            const k = `${key}l${pi}_${li}`
+            if (!s.trim()) {
+              kids.push(h('div', { key: k, className: 'sc-gap' }))
+              return
+            }
+            const head = s.match(/^\s*(#{1,6})\s+(.*)$/)
+            if (head) {
+              kids.push(h('div', { key: k, className: 'sc-h' }, inlineRich(head[2], k)))
+              return
+            }
+            const item = s.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)
+            if (item) {
+              kids.push(h('div', { key: k, className: 'sc-li' }, inlineRich(item[1], k)))
+              return
+            }
+            if (/^\s*>/.test(s)) {
+              kids.push(h('div', { key: k, className: 'sc-quote' }, inlineRich(s.replace(/^\s*>\s?/, ''), k)))
+              return
+            }
+            kids.push(h('div', { key: k, className: 'sc-line' }, inlineRich(s, k)))
+          })
+          if (kids.length) nodes.push(h('div', { key: `${key}b${pi}`, className: 'sc-bd' }, kids))
+        })
+      return nodes.length ? nodes : [h('div', { key: `${key}empty`, className: 'sc-line' }, '（空）')]
+    }
 
     // A native <select> cannot be styled (Chrome draws the option list itself),
     // so this mirrors the model picker in ui-model-selection: a ghost trigger
@@ -448,6 +522,7 @@ window.__ModuleLoader__.load({
                     },
                   },
                   h('span', { className: 'sc-mi-text' }, it.label),
+                  it.sub ? h('span', { className: 'sc-mi-sub' }, it.sub) : null,
                   h('span', { className: 'sc-mi-check' }, it.value === value ? '✓' : '')
                 )
               )
@@ -462,6 +537,7 @@ window.__ModuleLoader__.load({
       const [leftKey, setLeftKey] = React.useState(null)
       const [rightKey, setRightKey] = React.useState(null)
       const [onlyDiff, setOnlyDiff] = React.useState(true)
+      const [wordDiff, setWordDiff] = React.useState(false)
       const [filter, setFilter] = React.useState('')
       const [mode, setMode] = React.useState('compare')
       const [note, setNote] = React.useState('')
@@ -477,7 +553,8 @@ window.__ModuleLoader__.load({
         () =>
           answers.map((a) => ({
             value: a.key,
-            label: `#${a.turn}${a.time ? ' ' + clock(a.time) : ''} · ${a.chars}字 · ${a.text.slice(0, 22).replace(/\s+/g, ' ')}`,
+            label: `#${a.turn}${a.time ? ' · ' + clock(a.time) : ''} · ${a.chars}字`,
+            sub: (a.question || a.text || '').replace(/\s+/g, ' ').slice(0, 60),
           })),
         [answers]
       )
@@ -546,20 +623,26 @@ window.__ModuleLoader__.load({
       // A render bug must never leave the tab blank: catch it and show the reason.
       let dropPanel = null
       try {
+      const cellBody = (text, key) => (wordDiff ? markHits(text, filter) : renderRich(text, key))
       rows.forEach((r, i) => {
         if (r.same) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, markHits(r.left, filter)))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, markHits(r.right, filter)))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }, cellBody(r.left, `L${i}`)))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }, cellBody(r.right, `R${i}`)))
         } else if (r.left && r.right) {
-          const d = diffTokens(r.left, r.right)
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, spans(d.left, 'left')))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, spans(d.right, 'right')))
+          if (wordDiff) {
+            const d = diffTokens(r.left, r.right)
+            cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, spans(d.left, 'left')))
+            cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, spans(d.right, 'right')))
+          } else {
+            cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-changed' }, renderRich(r.left, `L${i}`)))
+            cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-changed' }, renderRich(r.right, `R${i}`)))
+          }
         } else if (r.left) {
-          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, markHits(r.left, filter)))
+          cells.push(h('div', { key: `l${i}`, className: 'sc-cell sc-only-l' }, cellBody(r.left, `L${i}`)))
           cells.push(h('div', { key: `r${i}`, className: 'sc-cell' }))
         } else {
           cells.push(h('div', { key: `l${i}`, className: 'sc-cell' }))
-          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, markHits(r.right, filter)))
+          cells.push(h('div', { key: `r${i}`, className: 'sc-cell sc-only-r' }, cellBody(r.right, `R${i}`)))
         }
       })
 
@@ -643,48 +726,56 @@ window.__ModuleLoader__.load({
             h('button', { 'data-on': mode === 'compare' ? 'true' : 'false', onClick: () => setMode('compare') }, '对比'),
             h('button', { 'data-on': mode === 'drop' ? 'true' : 'false', onClick: () => setMode('drop') }, '删除范围')
           ),
-          mode === 'compare'
-            ? [
-                h(Picker, { key: 'ls', value: leftKey, onChange: setLeftKey, items: answerItems, placeholder: '左边：选一条回答', label: '左' }),
-                h(Picker, { key: 'rs', value: rightKey, onChange: setRightKey, items: answerItems, placeholder: '右边：选一条回答', label: '右' }),
-                h(
-                  'button',
-                  { key: 'swap', className: 'sc-btn', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
-                  '⇄ 交换'
-                ),
-                pairs.length > 0
-                  ? h(Picker, {
-                      key: 'pair',
-                      value: null,
-                      onChange: (v) => {
-                        const pair = pairs[Number(v)]
-                        if (!pair) return
-                        setLeftKey(pair.left.key)
-                        setRightKey(pair.right.key)
-                      },
-                      items: pairItems,
-                      placeholder: `自动配对（${pairs.length} 对）`,
-                      title: '同一个问题问过多次，直接选那一对',
-                    })
-                  : null,
-                h('input', { key: 'filter', className: 'sc-input', placeholder: '搜索关键词', value: filter, onChange: (e) => setFilter(e.target.value) }),
-                result
-                  ? h('span', { key: 'stat', className: 'sc-stat' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}${query ? ` · 命中 ${rows.length} 段` : ''}`)
-                  : null,
-                h(
-                  'label',
-                  { key: 'only', className: 'sc-toggle' },
-                  h('input', { type: 'checkbox', checked: onlyDiff, onChange: (e) => setOnlyDiff(e.target.checked) }),
-                  ' 仅看差异'
-                ),
-                result
-                  ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result), '已复制 Markdown') }, '复制 Markdown')
-                  : null,
-              ]
-            : null,
+          result
+            ? h('span', { className: 'sc-stat sc-grow' }, `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 单侧 ${result.stats.only}${query ? ` · 命中 ${rows.length} 段` : ''}`)
+            : h('span', { className: 'sc-grow' }),
           flash ? h('span', { className: 'sc-flash' }, flash) : null,
+          result
+            ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result), '已复制 Markdown') }, '复制 Markdown')
+            : null,
           props.onClose ? h('button', { className: 'sc-btn', onClick: props.onClose }, '关闭') : null
         ),
+        mode === 'compare'
+          ? h(
+              'div',
+              { className: 'sc-tools' },
+              h(Picker, { key: 'ls', value: leftKey, onChange: setLeftKey, items: answerItems, placeholder: '选一条回答', label: '左' }),
+              h(Picker, { key: 'rs', value: rightKey, onChange: setRightKey, items: answerItems, placeholder: '选一条回答', label: '右' }),
+              h(
+                'button',
+                { key: 'swap', className: 'sc-btn', title: '交换左右', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
+                '⇄'
+              ),
+              pairs.length > 0
+                ? h(Picker, {
+                    key: 'pair',
+                    value: null,
+                    onChange: (v) => {
+                      const pair = pairs[Number(v)]
+                      if (!pair) return
+                      setLeftKey(pair.left.key)
+                      setRightKey(pair.right.key)
+                    },
+                    items: pairItems,
+                    placeholder: `自动配对（${pairs.length} 对）`,
+                    title: '同一个问题问过多次，直接选那一对',
+                  })
+                : null,
+              h('input', { key: 'filter', className: 'sc-input', placeholder: '搜索关键词', value: filter, onChange: (e) => setFilter(e.target.value) }),
+              h(
+                'label',
+                { key: 'only', className: 'sc-toggle' },
+                h('input', { type: 'checkbox', checked: onlyDiff, onChange: (e) => setOnlyDiff(e.target.checked) }),
+                ' 仅看差异'
+              ),
+              h(
+                'label',
+                { key: 'word', className: 'sc-toggle', title: '段落内逐词标出增删（会失去排版）' },
+                h('input', { type: 'checkbox', checked: wordDiff, onChange: (e) => setWordDiff(e.target.checked) }),
+                ' 词级差异'
+              )
+            )
+          : null,
         note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? h('div', { className: 'sc-grid' }, cells) : dropPanel
       )
       } catch (err) {
