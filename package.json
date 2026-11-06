@@ -1,6 +1,6 @@
 {
   "name": "dsh-scalpel",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "description": "Context surgery for DeepSeek Harness: compare two answers in the same session, and drop chosen turns from every later model request.",
   "keywords": [

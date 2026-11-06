@@ -183,6 +183,110 @@ window.__ModuleLoader__.load({
       return { rows, stats: { same, changed, only, total: rows.length } }
     }
 
+    // Match blocks of B against A; unmatched B blocks are kept with the number
+    // of A blocks consumed before them so a third sequence can be merged in.
+    const lcsMatch = (left, right) => {
+      const L = left.map(norm)
+      const R = right.map(norm)
+      const n = L.length
+      const m = R.length
+      const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+      for (let i = n - 1; i >= 0; i -= 1) {
+        for (let j = m - 1; j >= 0; j -= 1) {
+          dp[i][j] = sim(L[i], R[j]) >= SAME ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+        }
+      }
+      const match = new Map()
+      const extra = new Map()
+      let i = 0
+      let j = 0
+      while (i < n && j < m) {
+        if (sim(L[i], R[j]) >= SAME) {
+          match.set(i, j)
+          i += 1
+          j += 1
+        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+          i += 1
+        } else {
+          const list = extra.get(i) ?? []
+          list.push(j)
+          extra.set(i, list)
+          j += 1
+        }
+      }
+      while (j < m) {
+        const list = extra.get(i) ?? []
+        list.push(j)
+        extra.set(i, list)
+        j += 1
+      }
+      return { match, extra }
+    }
+
+    // Three-way alignment: A is the spine, B and C are matched onto its blocks.
+    const compare3 = (textA, textB, textC) => {
+      const A = splitBlocks(textA)
+      const B = splitBlocks(textB)
+      const C = splitBlocks(textC)
+      const ab = lcsMatch(A, B)
+      const ac = lcsMatch(A, C)
+      const rows = []
+      const emitGap = (gap) => {
+        const bs = ab.extra.get(gap) ?? []
+        const cs = ac.extra.get(gap) ?? []
+        const len = Math.max(bs.length, cs.length)
+        for (let k = 0; k < len; k += 1) {
+          rows.push({ sides: [null, bs[k] === undefined ? null : B[bs[k]], cs[k] === undefined ? null : C[cs[k]]] })
+        }
+      }
+      for (let i = 0; i < A.length; i += 1) {
+        emitGap(i)
+        rows.push({
+          sides: [A[i], ab.match.has(i) ? B[ab.match.get(i)] : null, ac.match.has(i) ? C[ac.match.get(i)] : null],
+        })
+      }
+      emitGap(A.length)
+      let same = 0
+      let changed = 0
+      let only = 0
+      const marked = rows.map((r) => {
+        const present = r.sides.filter((t) => t != null)
+        const isSame = present.length >= 2 && present.every((t) => t === present[0])
+        if (isSame) same += 1
+        else if (present.length === 3) changed += 1
+        else only += 1
+        return { ...r, same: isSame }
+      })
+      return { rows: marked, stats: { same, changed, only, total: marked.length } }
+    }
+
+    // Rough per-turn token weights for the budget planner. Measured prompt sizes
+    // (turn-tail/step usage) win; turns without usage fall back to chars × 0.62.
+    const planTokens = (turns, answers) => {
+      const lastOfTurn = new Map()
+      for (const ans of answers) {
+        if (ans.usage && ans.usage.totalTokens != null) lastOfTurn.set(ans.turn, ans.usage)
+      }
+      const weights = []
+      let prevPrompt = 0
+      let lastPrompt = null
+      let lastOut = 0
+      for (const t of turns) {
+        const u = lastOfTurn.get(t.turn)
+        if (u) {
+          const prompt = Math.max(0, (u.totalTokens ?? 0) - (u.outputTokens ?? 0))
+          weights.push(Math.max(0, prompt - prevPrompt))
+          prevPrompt = prompt
+          lastPrompt = prompt
+          lastOut = u.outputTokens ?? 0
+        } else {
+          weights.push(Math.round(((t.question?.length ?? 0) + t.chars) * 0.62))
+        }
+      }
+      const current = lastPrompt != null ? lastPrompt + lastOut : weights.reduce((n, w) => n + w, 0)
+      return { weights, current }
+    }
+
     // ---- chat snapshot helpers ----
     const isTextBlock = (b) => b && (b.kind === 'text' || b.type === 'text') && typeof b.text === 'string'
     const textOf = (blocks) => (blocks ?? []).filter(isTextBlock).map((b) => b.text).join('\n\n')
@@ -196,7 +300,13 @@ window.__ModuleLoader__.load({
       let current = null
       for (const key of snapshot.order ?? []) {
         const node = snapshot.nodes?.get?.(key)
-        if (!node || node.visibility === 'hidden') continue
+        if (!node) continue
+        // completed-turn footer carries the turn's token accounting
+        if (node.kind === 'turn-tail') {
+          if (current && node.data?.tokenUsage) current.usage = node.data.tokenUsage
+          continue
+        }
+        if (node.visibility === 'hidden') continue
         if (node.kind === 'user') {
           current = { turn: turns.length + 1, question: questionOf(node), chars: 0, time: null, answers: [] }
           turns.push(current)
@@ -208,14 +318,24 @@ window.__ModuleLoader__.load({
         const text = textOf(data.blocks ?? data.content).trim()
         if (!text) continue
         const time = data.time ?? node.time ?? null
-        current.answers.push({ key, messageId: data.finalNode?.messageId ?? data.messageId ?? key, text, chars: text.length, time })
+        current.answers.push({
+          key,
+          messageId: data.finalNode?.messageId ?? data.messageId ?? key,
+          text,
+          chars: text.length,
+          time,
+          usage: data.usage ?? null,
+        })
         current.chars += text.length
         if (!current.time) current.time = time
       }
       return turns
     }
 
-    const answersOf = (turns) => turns.flatMap((t) => t.answers.map((a) => ({ ...a, turn: t.turn, question: t.question })))
+    const answersOf = (turns) =>
+      turns.flatMap((t) =>
+        t.answers.map((a) => ({ ...a, turn: t.turn, question: t.question, usage: a.usage ?? t.usage ?? null }))
+      )
 
     // Same question asked more than once → the two answers are directly comparable.
     const autoPairs = (turns) => {
@@ -262,8 +382,13 @@ window.__ModuleLoader__.load({
       }
     }
 
-    const markdownOf = (a, b, result) =>
-      `# dsh-scalpel 对比\n\n- 左：#${a.turn}（${a.chars} 字）\n- 右：#${b.turn}（${b.chars} 字）\n- 结构：${result.stats.total} 段，相同 ${result.stats.same}，改动 ${result.stats.changed}，单侧 ${result.stats.only}\n\n## 左 · #${a.turn}\n\n${a.text}\n\n## 右 · #${b.turn}\n\n${b.text}\n`
+    const markdownOf = (a, b, result, third) => {
+      const sides = [a, b, ...(third ? [third] : [])]
+      const names = sides.length === 3 ? ['左', '中', '右'] : ['左', '右']
+      const head = sides.map((s, i) => `- ${names[i]}：#${s.turn}（${s.chars} 字）`).join('\n')
+      const bodies = sides.map((s, i) => `## ${names[i]} · #${s.turn}\n\n${s.text}`).join('\n\n')
+      return `# dsh-scalpel 对比\n\n${head}\n- 结构：${result.stats.total} 段，相同 ${result.stats.same}，改动 ${result.stats.changed}，单侧 ${result.stats.only}\n\n${bodies}\n`
+    }
 
     const markHits = (text, query) => {
       const q = query.trim()
@@ -300,15 +425,42 @@ window.__ModuleLoader__.load({
       return `${p(d.getHours())}:${p(d.getMinutes())}`
     }
 
+    // ---- per-turn token accounting (turn-tail node's tokenUsage) ----
+    const num = (n) => (n == null ? '—' : n.toLocaleString('en-US'))
+    const compactTok = (n) => {
+      if (n == null) return '—'
+      if (n >= 1e6) {
+        const v = n / 1e6
+        return (Number.isInteger(v) ? v : v.toFixed(2)) + 'M'
+      }
+      if (n >= 1e4) {
+        const v = n / 1e3
+        return (Number.isInteger(v) ? v : v.toFixed(1)) + 'k'
+      }
+      return n.toLocaleString('en-US')
+    }
+    const usageParts = (u) => {
+      if (!u) return null
+      const uncached = u.uncachedInputTokens ?? u.inputTokens ?? null
+      const out = u.outputTokens ?? null
+      const cr = u.cacheReadTokens ?? null
+      const cw = u.cacheWriteTokens ?? null
+      let total = u.totalTokens ?? null
+      if (total == null && uncached != null && out != null) total = uncached + out + (cr ?? 0) + (cw ?? 0)
+      const input = total != null && out != null ? total - out : uncached != null ? uncached + (cr ?? 0) + (cw ?? 0) : null
+      const hit = cr != null && input != null && input > 0 ? Math.round((cr / input) * 1000) / 10 : null
+      return { uncached, out, cr, cw, total, hit }
+    }
+
     // Cross-component hand-off: the action button preselects one side, then
     // switches to this view. Module scope = one instance per page.
     const request = { messageId: null }
 
     // ---- styles: only DSH theme tokens (no hardcoded colors) ----
     const CSS = [
-      '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
-      '.sc-head{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;padding:8px 16px;min-height:44px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2)}',
-      '.sc-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.sc-page{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px);background:transparent}',
+      '.sc-head{display:flex;gap:10px;align-items:center;flex-wrap:nowrap;padding:10px 16px;min-height:48px;position:sticky;top:0;z-index:2;background:var(--dsw-alias-bg-base);border-bottom:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))}',
+      '.sc-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px 10px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}',
       '.sc-grow{flex:1;min-width:0}',
       // selects/buttons follow the model-picker idiom in ui-model-selection:
       // ghost trigger + hover fill, popup on the shared "specific-menu" surface
@@ -317,8 +469,9 @@ window.__ModuleLoader__.load({
       '.sc-sel:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.sc-sel[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-sel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-tools .sc-sel{max-width:260px}',
-      '.sc-tools .sc-input{width:170px}',
+      '.sc-tools .sc-sel{width:100%;max-width:none}',
+      '.sc-tools .sc-menu-wrap{flex:1 1 200px;min-width:0}',
+      '.sc-tools .sc-input{flex:0 1 170px;min-width:120px;width:auto}',
       '.sc-sel-chev{flex:none;color:var(--dsw-alias-label-caption);font-size:10px;line-height:1;transform:translateY(-1px)}',
       '.sc-menu-wrap{position:relative;display:inline-flex;min-width:0}',
       '.sc-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:1100;display:flex;flex-direction:column;min-width:min(320px,90vw);max-width:min(460px,92vw);max-height:min(360px,60vh);overflow:auto;padding:4px;border:0;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2));backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2)}',
@@ -328,17 +481,19 @@ window.__ModuleLoader__.load({
       '.sc-mi-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sc-mi-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);font-size:12px;text-align:center}',
       '.sc-mi-sub{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 11px;border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12.5px;line-height:20px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
-      '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}',
+      '.sc-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:30px;padding:0 13px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:4px;background:var(--dsw-alias-bg-layer-2,#fff);color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:13px;font-weight:400;line-height:20px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
+      '.sc-btn:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-brand-primary,#4b6bff);color:var(--dsw-alias-brand-primary,#4b6bff)}',
       '.sc-btn:active{background:var(--dsw-alias-interactive-bg-active)}',
+      '.sc-btn:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-brand-primary,#4b6bff) 30%,transparent)}',
       '.sc-btn-solid{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}',
       '.sc-btn-solid:hover{background:var(--dsw-alias-interactive-bg-active)}',
       '.sc-action{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;cursor:pointer}',
       '.sc-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
       '.sc-stat{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
-      '.sc-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;cursor:pointer}',
-      '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}',
-      '.sc-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:12px 16px 20px;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+      '.sc-toggle{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:20px;cursor:pointer;white-space:nowrap}',
+      '.sc-tools .sc-toggle:first-of-type{margin-left:auto}',
+      '.sc-toggle input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-brand-primary,#4b6bff);cursor:pointer}',
+      '.sc-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:16px;padding:14px 16px 24px;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
       '.sc-cell{padding:0;white-space:normal;overflow-wrap:anywhere;line-height:1.72}',
       '.sc-bd>:last-child{margin-bottom:0}',
       '.sc-line{margin:0}',
@@ -351,31 +506,49 @@ window.__ModuleLoader__.load({
       '.sc-ic{padding:1px 5px;border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-markdown-inline-code);font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:.94em}',
       // ---- two-column compare, laid out like agent-acta's 两轮对比 dialog:
       // a VS header, a bordered metric table, then one bordered card pair per block.
-      '.sc-vshead{display:flex;align-items:stretch;gap:14px;margin:2px 0 2px}',
+      '.sc-vshead{display:flex;align-items:flex-start;gap:16px;margin:0 0 2px}',
       '.sc-vh{flex:1;min-width:0;padding:0}',
-      '.sc-vh-l{border-right:.5px solid var(--dsw-alias-border-l1);padding-right:14px}',
-      '.sc-vh-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);min-width:0}',
+      '.sc-vh-l{border-right:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));padding-right:16px}',
+      '.sc-vh-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);min-width:0;line-height:22px}',
       '.sc-vh-title span.t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-vh-meta{margin-top:4px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-vs{flex:none;align-self:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--dsw-alias-label-dimmed)}',
-      '.sc-metrics{border:.5px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}',
-      '.sc-mrow{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:.5px solid var(--dsw-alias-border-l1);min-width:0}',
+      '.sc-vh-meta{margin-top:4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-vh-usage{margin-top:3px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}',
+      '.sc-vs{flex:none;align-self:center;padding:0 2px;font-size:12px;font-weight:800;letter-spacing:1px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-tertiary))}',
+      '.sc-metrics{margin:12px 0 2px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}',
+      '.sc-mrow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));min-width:0}',
       '.sc-mrow:last-child{border-bottom:none}',
-      '.sc-mlabel{flex:none;width:96px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
+      '.sc-mlabel{flex:none;width:104px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
       '.sc-mhot{font-size:11px;font-weight:700;color:var(--dsw-alias-brand-primary)}',
       '.sc-mval{flex:1;min-width:0;font-size:13px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sc-mval.big{color:var(--dsw-alias-label-primary);font-weight:600}',
       '.sc-mspan{flex:1;min-width:0;font-size:12.5px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sc-sec{display:flex;flex-direction:column;gap:6px}',
-      '.sc-sec-h{display:flex;align-items:center;gap:8px;min-height:20px}',
-      '.sc-sec-idx{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
+      '.sc-sec{display:flex;flex-direction:column;gap:8px}',
+      '.sc-sec-h{display:flex;align-items:center;gap:8px;min-height:22px}',
+      '.sc-sec-idx{font-size:13px;font-weight:700;color:var(--dsw-alias-label-primary)}',
       '.sc-tag{flex:none;font-size:11px;font-weight:600;line-height:17px;padding:0 7px;border-radius:20px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}',
       '.sc-tag-changed{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 16%,transparent);color:var(--dsw-alias-state-warn-primary)}',
       '.sc-tag-left{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 14%,transparent);color:var(--dsw-alias-state-error-primary)}',
       '.sc-tag-right{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);color:var(--dsw-alias-state-success-primary)}',
-      '.sc-sec-cols{display:flex;gap:14px;align-items:flex-start}',
-      '.sc-col{flex:1;min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px}',
-      '.sc-col-empty{color:var(--dsw-alias-label-dimmed);font-size:12.5px}',
+      '.sc-tag-mid{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 16%,transparent);color:var(--dsw-alias-state-warn-primary,#d97706)}',
+      '.sc-viewseg{display:flex;align-items:center;flex:none;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:14px;overflow:hidden}',
+      '.sc-viewseg button{height:26px;padding:0 10px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer}',
+      '.sc-viewseg button[data-on=true]{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.sc-same{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:8px;background:transparent;color:inherit;font-family:inherit;text-align:left;cursor:pointer}',
+      '.sc-same:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.sc-same-text{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sc-same-open{flex:none;color:var(--dsw-alias-brand-text,#4b6bff);font-size:12px}',
+      '.sc-same-toggle{border:0;background:transparent;color:var(--dsw-alias-brand-text,#4b6bff);font-family:inherit;font-size:12px;cursor:pointer;padding:0 4px}',
+      '.sc-lines{display:flex;flex-direction:column;gap:6px}',
+      '.sc-lrow{display:flex;gap:8px;align-items:flex-start}',
+      '.sc-badge{flex:none;margin-top:2px;padding:0 6px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:17px;font-weight:600}',
+      '.sc-badge-0{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 14%,transparent);color:var(--dsw-alias-state-error-primary,#dc2626)}',
+      '.sc-badge-1{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 16%,transparent);color:var(--dsw-alias-state-warn-primary,#d97706)}',
+      '.sc-badge-2{background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#16a34a) 14%,transparent);color:var(--dsw-alias-state-success-primary,#16a34a)}',
+      '.sc-lbody{flex:1;min-width:0;padding:6px 10px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:8px;background:var(--dsw-alias-bg-layer-1)}',
+      '.sc-only-m{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 35%,var(--dsw-alias-border-l1,#e5e7eb))}',
+      '.sc-sec-cols{display:flex;gap:14px;align-items:stretch}',
+      '.sc-col{flex:1;min-width:0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:9px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px}',
+      '.sc-col-empty{color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-tertiary));font-size:12.5px}',
       '.sc-changed{box-shadow:inset 2px 0 0 color-mix(in srgb,var(--dsw-alias-state-warn-primary) 60%,transparent)}',
       '.sc-only-l{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 35%,var(--dsw-alias-border-l1));background:var(--dsw-alias-code-diff-deleted)}',
       '.sc-only-r{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 35%,var(--dsw-alias-border-l1));background:var(--dsw-alias-code-diff-added)}',
@@ -387,19 +560,28 @@ window.__ModuleLoader__.load({
       '.sc-panel .sc-head{background:transparent}',
       '.sc-panel ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2)}',
       // mode switch = pill tabs (agent-acta's cmp-pick idiom), not the underline tab bar
-      '.sc-seg{display:flex;align-items:center;gap:6px;flex:none}',
-      '.sc-seg button{height:26px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:20px;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12.5px;font-weight:600;line-height:24px;cursor:pointer;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
+      '.sc-seg{display:flex;align-items:center;gap:8px;flex:none}',
+      '.sc-seg button{height:28px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:14px;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12.5px;font-weight:600;line-height:26px;cursor:pointer;transition:background-color .12s ease,color .12s ease,border-color .12s ease}',
       '.sc-seg button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
-      '.sc-seg button[data-on=true]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-base)}',
+      '.sc-seg button[data-on=true]{background:var(--dsw-alias-brand-primary,#4b6bff);border-color:var(--dsw-alias-brand-primary,#4b6bff);color:#fff}',
       '.sc-seg button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}',
-      '.sc-input{height:28px;width:200px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;outline:none}',
+      '.sc-input{height:30px;padding:0 9px;border:1px solid var(--dsw-alias-border-l4,rgba(0,0,0,.18));border-radius:4px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;outline:none}',
       '.sc-input::placeholder{color:var(--dsw-alias-label-dimmed)}',
       '.sc-input:focus{border-color:var(--dsw-alias-state-business-primary)}',
       '.sc-hit{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 24%,transparent);border-radius:var(--dsw-radius-xs)}',
       '.sc-drop{flex:1;min-height:0;display:flex;flex-direction:column}',
-      '.sc-drop-head{display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1)}',
+      '.sc-drop-head{display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}',
+      '.sc-plan{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}',
+      '.sc-rules{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}',
+      '.sc-rule{display:inline-flex;align-items:center;gap:4px;padding:1px 4px 1px 8px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:12px;line-height:20px}',
+      '.sc-rule-x{width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:12px;line-height:1;cursor:pointer}',
+      '.sc-rule-x:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}',
+      '.sc-drop-actions{display:flex;gap:8px;flex:none;margin-left:auto}',
+      '.sc-btn:disabled{opacity:.45;cursor:default}',
+      '.sc-btn:disabled:hover{background:var(--dsw-alias-bg-layer-2,#fff);border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.12));color:var(--dsw-alias-label-secondary)}',
       '.sc-turns{flex:0 1 auto;max-height:46vh;min-height:0;overflow:auto;padding:4px 14px 8px}',
-      '.sc-trow{display:grid;grid-template-columns:44px 52px 1fr 68px;gap:10px;align-items:baseline;padding:7px 8px;border-bottom:.5px solid var(--dsw-alias-border-l1);cursor:pointer;font-size:13px;line-height:20px}',
+      '.sc-trow{display:grid;grid-template-columns:44px 52px 1fr 178px;gap:10px;align-items:baseline;padding:7px 8px;border-bottom:.5px solid var(--dsw-alias-border-l1);cursor:pointer;font-size:13px;line-height:20px}',
+      '.sc-tok{text-align:right;white-space:nowrap}',
       '.sc-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.sc-trow[data-in=true]{background:var(--dsw-alias-markdown-tag);box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary)}',
       '.sc-dim{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
@@ -408,16 +590,21 @@ window.__ModuleLoader__.load({
       '.sc-flash{color:var(--dsw-alias-state-success-primary);font-size:12px}',
     ].join('\n')
 
-    let styled = false
+    // Keep the style tag in sync instead of injecting once: on hot reload the
+    // plugin module is swapped but <head> survives, so an early return would
+    // keep the previous version's CSS while the new markup is already rendered.
     const ensureStyles = () => {
-      if (styled) return
-      styled = true
       try {
-        if (document.querySelector('style[data-dsh-scalpel]')) return
-        const el = document.createElement('style')
-        el.setAttribute('data-dsh-scalpel', '')
-        el.textContent = CSS
-        document.head.appendChild(el)
+        if (typeof document === 'undefined' || !document.head) return
+        let el = document.querySelector('style[data-dsh-scalpel]')
+        if (!el) {
+          el = document.createElement('style')
+          el.setAttribute('data-dsh-scalpel', '')
+          el.textContent = CSS
+          document.head.appendChild(el)
+          return
+        }
+        if (el.textContent !== CSS) el.textContent = CSS
       } catch (err) {
         console.warn('[dsh-scalpel] style injection failed: ' + (err?.message ?? err))
       }
@@ -567,6 +754,16 @@ window.__ModuleLoader__.load({
       const [flash, setFlash] = React.useState('')
       const [from, setFrom] = React.useState(0)
       const [to, setTo] = React.useState(0)
+      const turnsRef = React.useRef(null)
+      const [thirdKey, setThirdKey] = React.useState('')
+      const [viewMode, setViewMode] = React.useState('side')
+      const [foldSame, setFoldSame] = React.useState(false)
+      const [openSame, setOpenSame] = React.useState({})
+      const [budget, setBudget] = React.useState(500000)
+      const [keepLast, setKeepLast] = React.useState(1)
+      const [planNote, setPlanNote] = React.useState('')
+      const [rules, setRules] = React.useState(null)
+      const [ruleNote, setRuleNote] = React.useState('')
 
       const snapshot = useChat ? useChat((s) => s) : null
       const turns = React.useMemo(() => turnsOf(snapshot), [snapshot])
@@ -584,6 +781,10 @@ window.__ModuleLoader__.load({
       const pairItems = React.useMemo(
         () => pairs.map((p, i) => ({ value: String(i), label: `#${p.from} × #${p.to} · ${p.question.slice(0, 26)}` })),
         [pairs]
+      )
+      const thirdItems = React.useMemo(
+        () => [{ value: '', label: '不对比' }, ...answerItems.filter((it) => it.value !== leftKey && it.value !== rightKey)],
+        [answerItems, leftKey, rightKey]
       )
 
       React.useEffect(() => {
@@ -623,11 +824,15 @@ window.__ModuleLoader__.load({
 
       const a = answers.find((x) => x.key === leftKey)
       const b = answers.find((x) => x.key === rightKey)
-      const result = a && b && a.key !== b.key ? compare(a.text, b.text) : null
+      const third = answers.find((x) => x.key === thirdKey && x.key !== leftKey && x.key !== rightKey) ?? null
+      const result = a && b && a.key !== b.key ? (third ? compare3(a.text, b.text, third.text) : compare(a.text, b.text)) : null
+      const colCount = third ? 3 : 2
+      const labels = colCount === 3 ? ['左', '中', '右'] : ['左', '右']
       const query = filter.trim().toLowerCase()
       const rows = (result?.rows ?? [])
-        .filter((r) => !onlyDiff || !r.same)
-        .filter((r) => !query || (r.left ?? '').toLowerCase().includes(query) || (r.right ?? '').toLowerCase().includes(query))
+        .map((r) => (r.sides ? r : { sides: [r.left, r.right], same: r.same }))
+        .filter((r) => !onlyDiff || !r.same || foldSame)
+        .filter((r) => !query || r.sides.some((t) => (t ?? '').toLowerCase().includes(query)))
 
       const copy = (text, label) => {
         const done = () => setFlash(label)
@@ -642,19 +847,131 @@ window.__ModuleLoader__.load({
         fallbackCopy(text, done)
       }
 
+      // ---- host bridge: the plugin's own host half persists drop rules ----
+      const apiBase = React.useMemo(() => {
+        try {
+          return new URL('dsh-scalpel/api/', document.baseURI).pathname
+        } catch {
+          return '/dsh-scalpel/api/'
+        }
+      }, [])
+      const sessionArg = String(props.sessionId ?? '')
+      const api = (path, options) => {
+        if (typeof fetch !== 'function') return Promise.reject(new Error('fetch unavailable'))
+        return fetch(apiBase + path, { cache: 'no-store', ...options }).then((res) => {
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          return res.json()
+        })
+      }
+      React.useEffect(() => {
+        if (mode !== 'drop' || !sessionArg) return undefined
+        let alive = true
+        api('rules?session=' + encodeURIComponent(sessionArg))
+          .then((r) => {
+            if (alive) {
+              setRules(r)
+              setRuleNote('')
+            }
+          })
+          .catch(() => {
+            if (alive) {
+              setRules(null)
+              setRuleNote('宿主规则接口不可用，可用下方命令')
+            }
+          })
+        return () => {
+          alive = false
+        }
+      }, [mode, sessionArg])
+      const postRule = async (path, body) => {
+        if (!sessionArg) return null
+        try {
+          const r = await api(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ session: sessionArg, ...body }),
+          })
+          setRules(r)
+          setRuleNote('')
+          return r
+        } catch (err) {
+          setRuleNote('规则接口失败：' + (err?.message ?? err))
+          return null
+        }
+      }
+
       // ---- compare body: VS header + metric table + one card pair per block ----
       // A render bug must never leave the tab blank: catch it and show the reason.
       let dropPanel = null
       try {
-      const cellBody = (text, key) => (wordDiff ? markHits(text, filter) : renderRich(text, key))
+      const cellBody = (text, key) => (wordDiff && colCount === 2 ? markHits(text, filter) : renderRich(text, key))
+
+      const tagFor = (r) => {
+        const present = r.sides.map((t, j) => (t != null ? j : -1)).filter((j) => j >= 0)
+        if (r.same) return { txt: '', cls: '' }
+        if (present.length === colCount) return { txt: '改动', cls: 'sc-tag-changed' }
+        const cls =
+          present.length === 1
+            ? present[0] === 0
+              ? 'sc-tag-left'
+              : present[0] === colCount - 1
+                ? 'sc-tag-right'
+                : 'sc-tag-mid'
+            : 'sc-tag-changed'
+        return { txt: '仅' + present.map((j) => labels[j]).join(''), cls }
+      }
+      const onlyCls = (j) => (j === 0 ? 'sc-only-l' : j === colCount - 1 ? 'sc-only-r' : 'sc-only-m')
 
       const secs = rows.map((r, i) => {
-        const tagCls = r.same ? '' : r.left && r.right ? 'sc-tag-changed' : r.left ? 'sc-tag-left' : 'sc-tag-right'
-        const tagTxt = r.same ? '' : r.left && r.right ? '改动' : r.left ? '仅左' : '仅右'
-        const clsL = r.same ? '' : r.right ? 'sc-changed' : 'sc-only-l'
-        const clsR = r.same ? '' : r.left ? 'sc-changed' : 'sc-only-r'
-        const bodyL = wordDiff && r.left && r.right ? spans(diffTokens(r.left, r.right).left, 'left') : null
-        const bodyR = wordDiff && r.left && r.right ? spans(diffTokens(r.left, r.right).right, 'right') : null
+        const present = r.sides.map((t, j) => (t != null ? j : -1)).filter((j) => j >= 0)
+        const tag = tagFor(r)
+        if (r.same && foldSame && !openSame[i]) {
+          const preview = String(present.length ? r.sides[present[0]] : '').replace(/\s+/g, ' ').slice(0, 90)
+          return h(
+            'div',
+            { key: `sec${i}`, className: 'sc-sec' },
+            h(
+              'button',
+              { type: 'button', className: 'sc-same', onClick: () => setOpenSame((v) => ({ ...v, [i]: true })) },
+              h('span', { className: 'sc-sec-idx' }, `段 ${i + 1}`),
+              h('span', { className: 'sc-tag' }, '相同'),
+              h('span', { className: 'sc-same-text' }, preview),
+              h('span', { className: 'sc-same-open' }, '展开')
+            )
+          )
+        }
+        const cols = r.sides.map((text, j) => {
+          if (text == null) {
+            return h('div', { key: `C${i}${j}`, className: 'sc-col' }, h('span', { className: 'sc-col-empty' }, '（无）'))
+          }
+          const changed = !r.same && present.length > 1
+          const cls = r.same ? '' : changed ? 'sc-changed' : onlyCls(j)
+          let content
+          if (viewMode === 'side' && wordDiff && colCount === 2 && present.length === 2) {
+            const ops = diffTokens(r.sides[0], r.sides[1])
+            content = spans(j === 0 ? ops.left : ops.right, j === 0 ? 'left' : 'right')
+          } else {
+            content = cellBody(text, `C${i}${j}`)
+          }
+          return h('div', { key: `C${i}${j}`, className: 'sc-col' + (cls ? ' ' + cls : '') }, content)
+        })
+        const content =
+          viewMode === 'line'
+            ? h(
+                'div',
+                { className: 'sc-lines' },
+                r.sides.map((text, j) =>
+                  text == null
+                    ? null
+                    : h(
+                        'div',
+                        { key: `L${i}${j}`, className: 'sc-lrow' },
+                        h('span', { className: 'sc-badge' + (r.same ? '' : ' sc-badge-' + j) }, r.same ? '同' : labels[j]),
+                        h('div', { className: 'sc-lbody' }, cellBody(text, `L${i}${j}`))
+                      )
+                )
+              )
+            : h('div', { className: 'sc-sec-cols' }, cols)
         return h(
           'div',
           { key: `sec${i}`, className: 'sc-sec' },
@@ -662,39 +979,36 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'sc-sec-h' },
             h('span', { className: 'sc-sec-idx' }, `段 ${i + 1}`),
-            tagTxt ? h('span', { className: 'sc-tag ' + tagCls }, tagTxt) : null
+            tag.txt ? h('span', { className: 'sc-tag ' + tag.cls }, tag.txt) : null,
+            r.same && foldSame
+              ? h('button', { type: 'button', className: 'sc-same-toggle', onClick: () => setOpenSame((v) => ({ ...v, [i]: false })) }, '收起')
+              : null
           ),
-          h(
-            'div',
-            { className: 'sc-sec-cols' },
-            h(
-              'div',
-              { key: `L${i}`, className: 'sc-col' + (clsL ? ' ' + clsL : '') },
-              bodyL || (r.left ? cellBody(r.left, `L${i}`) : h('span', { className: 'sc-col-empty' }, '（无）'))
-            ),
-            h(
-              'div',
-              { key: `R${i}`, className: 'sc-col' + (clsR ? ' ' + clsR : '') },
-              bodyR || (r.right ? cellBody(r.right, `R${i}`) : h('span', { className: 'sc-col-empty' }, '（无）'))
-            )
-          )
+          content
         )
       })
 
-      const mrow = (label, va, vb, hot, big) =>
+      const mrow = (label, values, hot, bigIndex) =>
         h(
           'div',
           { key: label, className: 'sc-mrow' },
           h('span', { className: 'sc-mlabel' }, label, hot ? h('b', { className: 'sc-mhot' }, hot) : null),
-          h('span', { className: 'sc-mval' + (big === 'a' ? ' big' : '') }, va),
-          h('span', { className: 'sc-mval' + (big === 'b' ? ' big' : '') }, vb)
+          ...values.map((v, i) => h('span', { key: i, className: 'sc-mval' + (bigIndex === i ? ' big' : '') }, v))
         )
+      const cols = [a, b, third].filter(Boolean)
+      const chars = cols.map((x) => x.chars)
       const delta = b ? b.chars - a.chars : 0
+      const bigIdx = chars.length > 1 ? chars.indexOf(Math.max(...chars)) : 0
+      const ua = usageParts(a && a.usage)
+      const ub = usageParts(b && b.usage)
+      const uc = usageParts(third && third.usage)
+      const usages = [ua, ub, uc].slice(0, cols.length)
+      const hasUsage = usages.some(Boolean)
       const metrics = result && a && b
         ? h(
             'div',
             { className: 'sc-metrics' },
-            mrow('字数', `${a.chars}`, `${b.chars}`, delta ? `差 ${Math.abs(delta)}` : '', delta > 0 ? 'b' : delta < 0 ? 'a' : ''),
+            mrow('字数', chars.map(String), delta ? `差 ${Math.abs(delta)}` : '', bigIdx),
             h(
               'div',
               { key: 'struct', className: 'sc-mrow' },
@@ -704,33 +1018,52 @@ window.__ModuleLoader__.load({
                 { className: 'sc-mspan' },
                 `${result.stats.total} 段 · 相同 ${result.stats.same} · 改动 ${result.stats.changed} · 仅单侧 ${result.stats.only}`
               )
-            )
+            ),
+            hasUsage ? mrow('用量', usages.map((u) => num(u?.total))) : null,
+            hasUsage ? mrow('未缓存输入', usages.map((u) => num(u?.uncached))) : null,
+            hasUsage ? mrow('缓存读取', usages.map((u) => num(u?.cr))) : null,
+            hasUsage ? mrow('缓存写入', usages.map((u) => num(u?.cw))) : null,
+            hasUsage ? mrow('输出', usages.map((u) => num(u?.out))) : null,
+            hasUsage ? mrow('缓存命中', usages.map((u) => (u?.hit == null ? '—' : `${u.hit}%`))) : null
           )
         : null
 
-      const vh = (side, ans) =>
-        h(
+      const vh = (i, ans, total) => {
+        const u = usageParts(ans && ans.usage)
+        return h(
           'div',
-          { className: 'sc-vh' + (side === '左' ? ' sc-vh-l' : '') },
+          { key: `vh${i}`, className: 'sc-vh' + (i < total - 1 ? ' sc-vh-l' : '') },
           h(
             'div',
             { className: 'sc-vh-title' },
             h('span', { className: 't' }, ans ? `#${ans.turn}${ans.time ? ' · ' + clock(ans.time) : ''} · ${ans.chars} 字` : '未选择'),
-            h('span', { className: 'sc-tag' }, side)
+            h('span', { className: 'sc-tag' }, labels[i])
           ),
-          h('div', { className: 'sc-vh-meta' }, ans ? ans.question || '（无提问文本）' : '从上面的下拉里选一条回答')
+          h('div', { className: 'sc-vh-meta' }, ans ? ans.question || '（无提问文本）' : '从上面的下拉里选一条回答'),
+          u ? h('div', { className: 'sc-vh-usage' }, `${compactTok(u.total)} tok${u.hit == null ? '' : ' · 缓存命中 ' + u.hit + '%'}`) : null
         )
+      }
+      const shown = [a, b, third].filter(Boolean)
+      const headNodes = []
+      shown.forEach((ans, i) => {
+        if (i) headNodes.push(h('div', { key: `vs${i}`, className: 'sc-vs' }, 'VS'))
+        headNodes.push(vh(i, ans, shown.length))
+      })
 
       const body = h(
         'div',
         { className: 'sc-body' },
-        h('div', { className: 'sc-vshead' }, vh('左', a), h('div', { className: 'sc-vs' }, 'VS'), vh('右', b)),
+        h('div', { className: 'sc-vshead' }, headNodes),
         metrics,
-        secs.length ? secs : h('div', { className: 'sc-note' }, query ? '没有段落命中这个关键词。' : '两条回答完全一致，没有可对比的差异。')
+        secs.length ? secs : h('div', { className: 'sc-note' }, query ? '没有段落命中这个关键词。' : '当前选择没有可对比的差异。')
       )
 
       // ---- drop mode: pick a turn range, copy a CLI command that records the rule ----
-      const sid = String(props.sessionId ?? '').replace(/[^0-9a-zA-Z-]/g, '').slice(0, 8) || 'latest'
+      const sid =
+        String(props.sessionId ?? '')
+          .replace(/^session-/, '')
+          .replace(/[^0-9a-zA-Z-]/g, '')
+          .slice(0, 8) || 'latest'
       const totalChars = turns.reduce((n, t) => n + t.chars, 0)
       const dropFrom = from || 0
       const dropTo = to || from || 0
@@ -738,6 +1071,8 @@ window.__ModuleLoader__.load({
       const droppedChars = turns.filter((t) => inRange(t.turn)).reduce((n, t) => n + t.chars, 0)
       const droppedTurns = dropFrom > 0 ? dropTo - dropFrom + 1 : 0
       const share = totalChars ? Math.round((droppedChars / totalChars) * 100) : 0
+      const plan = React.useMemo(() => planTokens(turns, answers), [turns, answers])
+      const droppedTokens = turns.reduce((n, t, i) => (inRange(t.turn) ? n + (plan.weights[i] ?? 0) : n), 0)
 
       const pick = (turn) => {
         if (!from || (from && to)) {
@@ -757,7 +1092,47 @@ window.__ModuleLoader__.load({
         setTo(turn)
       }
 
-      const turnRows = turns.map((t) =>
+      const resetSelection = () => {
+        setFrom(0)
+        setTo(0)
+        setFlash('')
+        if (turnsRef.current) turnsRef.current.scrollTop = 0
+      }
+
+      const budgetItems = [
+        { value: 200000, label: '200K' },
+        { value: 500000, label: '500K' },
+        { value: 1000000, label: '1M' },
+      ]
+      const keepItems = [1, 2, 3, 5].map((n) => ({ value: n, label: n + ' 轮' }))
+      const planByBudget = () => {
+        const { weights, current } = plan
+        const keep = Math.max(1, Number(keepLast) || 1)
+        const maxDrop = Math.max(0, turns.length - keep)
+        if (current <= budget) {
+          setFrom(0)
+          setTo(0)
+          setPlanNote(`当前约 ${compactTok(current)} tok，已在 ${compactTok(budget)} 预算内`)
+          return
+        }
+        let k = 0
+        let remaining = current
+        while (k < maxDrop && remaining > budget) {
+          remaining -= weights[k] ?? 0
+          k += 1
+        }
+        if (k === 0) {
+          setPlanNote('保留轮数已占满，没有可删的旧轮次')
+          return
+        }
+        setFrom(1)
+        setTo(k)
+        setPlanNote(
+          `删 #1–#${k} 后约 ${compactTok(Math.max(0, remaining))} tok（当前约 ${compactTok(current)}）${remaining > budget ? '，仍超预算' : ''}`
+        )
+      }
+
+      const turnRows = turns.map((t, i) =>
         h(
           'div',
           {
@@ -769,7 +1144,11 @@ window.__ModuleLoader__.load({
           h('span', { className: 'sc-dim' }, `#${t.turn}`),
           h('span', { className: 'sc-dim' }, t.time ? clock(t.time) : ''),
           h('span', null, t.question || '（无提问文本）'),
-          h('span', { className: 'sc-stat' }, `${t.chars} 字`)
+          h(
+            'span',
+            { className: 'sc-stat sc-tok', title: '按每轮 prompt 增量的实测值估算；没有用量记录的轮按字数折算' },
+            `${t.chars} 字 · 约 ${compactTok(plan.weights[i])} tok`
+          )
         )
       )
 
@@ -788,18 +1167,68 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'sc-drop-head' },
-          h('span', { className: 'sc-stat' }, `${turns.length} 轮 · ${totalChars} 字`),
-          h('span', { className: 'sc-dim' }, dropFrom > 0 ? `已选 #${dropFrom}–#${dropTo} · 屏蔽后少 ${droppedChars} 字（${share}%）` : '点两下行选一个区间'),
-          dropFrom > 0 ? h('button', { className: 'sc-btn', onClick: () => { setFrom(0); setTo(0) } }, '清除') : null
+          h('span', { className: 'sc-stat' }, `${turns.length} 轮 · ${totalChars} 字 · 当前约 ${compactTok(plan.current)} tok`),
+          h('span', { className: 'sc-dim' }, dropFrom > 0 ? `已选 #${dropFrom}–#${dropTo} · 少 ${droppedChars} 字（${share}%）· 省约 ${compactTok(droppedTokens)} tok` : '点两下行选一个区间'),
+          h(
+            'span',
+            { className: 'sc-drop-actions' },
+            dropFrom > 0 ? h('button', { className: 'sc-btn', onClick: () => { setFrom(0); setTo(0) } }, '清除') : null,
+            h('button', { className: 'sc-btn', onClick: resetSelection, disabled: dropFrom === 0, title: '取消全部已选轮次' }, '重置')
+          )
         ),
-        h('div', { className: 'sc-turns' }, turnRows),
+        h(
+          'div',
+          { className: 'sc-plan' },
+          h(Picker, { key: 'budget', value: budget, onChange: setBudget, items: budgetItems, placeholder: '预算', label: '目标' }),
+          h(Picker, { key: 'keep', value: keepLast, onChange: setKeepLast, items: keepItems, placeholder: '保留', label: '保留最近' }),
+          h('button', { key: 'plan', className: 'sc-btn', onClick: planByBudget }, '按预算选删'),
+          planNote ? h('span', { key: 'pn', className: 'sc-dim' }, planNote) : null
+        ),
+        h(
+          'div',
+          { className: 'sc-rules' },
+          h('span', { className: 'sc-stat' }, '已生效'),
+          rules && Array.isArray(rules.dropTurns) && rules.dropTurns.length
+            ? rules.dropTurns.map((range) =>
+                h(
+                  'span',
+                  { key: range.join('-'), className: 'sc-rule' },
+                  `#${range[0]}–#${range[1]}`,
+                  h(
+                    'button',
+                    { className: 'sc-rule-x', title: '撤销这条', onClick: () => postRule('undrop', { from: range[0], to: range[1] }) },
+                    '×'
+                  )
+                )
+              )
+            : h('span', { className: 'sc-dim' }, ruleNote || '无'),
+          rules && Array.isArray(rules.dropTurns) && rules.dropTurns.length
+            ? h('button', { key: 'clear-all', className: 'sc-btn', onClick: () => postRule('undrop', { all: true }) }, '全部撤销')
+            : null,
+          h('span', { className: 'sc-grow' }),
+          dropFrom > 0
+            ? h(
+                'button',
+                {
+                  key: 'apply',
+                  className: 'sc-btn',
+                  onClick: async () => {
+                    const r = await postRule('drop', { from: dropFrom, to: dropTo })
+                    if (r) setFlash(`已生效 #${dropFrom}–#${dropTo}`)
+                  },
+                },
+                '应用当前区间'
+              )
+            : null
+        ),
+        h('div', { className: 'sc-turns', ref: turnsRef }, turnRows),
         cmds,
         h('div', { className: 'sc-note', style: { padding: '0 14px 12px' } }, droppedTurns > 0 ? `规则写进 ~/.dsh/scalpel-drop.json 后，下一轮起第 ${dropFrom}–${dropTo} 轮不再发给模型（原始会话记录不动，界面也不消失）。` : '选好区间后，复制下面的命令在任何终端执行；dry 只打印规则、不落盘。')
       )
 
       return h(
         'div',
-        { className: 'sc-page' },
+        { className: 'sc-page', style: props.onClose ? undefined : { paddingBottom: 140 } },
         h(
           'div',
           { className: 'sc-head' },
@@ -812,7 +1241,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'sc-grow' }),
           flash ? h('span', { className: 'sc-flash' }, flash) : null,
           result
-            ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result), '已复制 Markdown') }, '复制 Markdown')
+            ? h('button', { key: 'md', className: 'sc-btn', onClick: () => copy(markdownOf(a, b, result, third), '已复制 Markdown') }, '复制 Markdown')
             : null,
           props.onClose ? h('button', { className: 'sc-btn', onClick: props.onClose }, '关闭') : null
         ),
@@ -822,10 +1251,17 @@ window.__ModuleLoader__.load({
               { className: 'sc-tools' },
               h(Picker, { key: 'ls', value: leftKey, onChange: setLeftKey, items: answerItems, placeholder: '选一条回答', label: '左' }),
               h(Picker, { key: 'rs', value: rightKey, onChange: setRightKey, items: answerItems, placeholder: '选一条回答', label: '右' }),
+              h(Picker, { key: 'ts', value: third ? thirdKey : '', onChange: setThirdKey, items: thirdItems, placeholder: '第三条（可选）' }),
               h(
                 'button',
                 { key: 'swap', className: 'sc-btn', title: '交换左右', onClick: () => { const t = leftKey; setLeftKey(rightKey); setRightKey(t) } },
                 '⇄'
+              ),
+              h(
+                'div',
+                { key: 'view', className: 'sc-viewseg' },
+                h('button', { type: 'button', 'data-on': viewMode === 'side' ? 'true' : 'false', onClick: () => setViewMode('side') }, '并排'),
+                h('button', { type: 'button', 'data-on': viewMode === 'line' ? 'true' : 'false', onClick: () => setViewMode('line') }, '行级')
               ),
               pairs.length > 0
                 ? h(Picker, {
@@ -851,10 +1287,18 @@ window.__ModuleLoader__.load({
               ),
               h(
                 'label',
-                { key: 'word', className: 'sc-toggle', title: '段落内逐词标出增删（会失去排版）' },
-                h('input', { type: 'checkbox', checked: wordDiff, onChange: (e) => setWordDiff(e.target.checked) }),
-                ' 词级差异'
-              )
+                { key: 'fold', className: 'sc-toggle', title: '相同段落收成一行，点开可看原文' },
+                h('input', { type: 'checkbox', checked: foldSame, onChange: (e) => setFoldSame(e.target.checked) }),
+                ' 折叠相同段'
+              ),
+              colCount === 2
+                ? h(
+                    'label',
+                    { key: 'word', className: 'sc-toggle', title: '段落内逐词标出增删（会失去排版）' },
+                    h('input', { type: 'checkbox', checked: wordDiff, onChange: (e) => setWordDiff(e.target.checked) }),
+                    ' 词级差异'
+                  )
+                : null
             )
           : null,
         note ? h('div', { className: 'sc-note' }, note) : mode === 'compare' ? body : dropPanel

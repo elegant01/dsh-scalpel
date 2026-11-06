@@ -1,0 +1,72 @@
+name: Publish Package
+
+# 发布两条线：
+#   - npmjs：Trusted Publisher（OIDC），免 token、免 OTP
+#   - GitHub Packages：GITHUB_TOKEN，上传时临时改名成 @elegant01/dsh-scalpel
+# 触发：发布 GitHub Release（打 tag 发 release 即触发），或手动 workflow_dispatch。
+#
+# 前置（一次性，必须由人在 npmjs.com 网页上完成）：
+#   包设置 / Publishing access → Trusted Publisher
+#   GitHub Actions / elegant01 / dsh-scalpel / release.yml
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  NPM_SCOPE: '@elegant01'
+  PACKAGE_NAME: dsh-scalpel
+
+jobs:
+  verify:
+    name: Syntax and host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 没有第三方依赖，不需要 install：直接跑内建的 node:test。
+      - run: node --check client.js
+      - run: node --check bin/scalpel.mjs
+      - run: node --check lib/index.js
+      - run: npm test
+
+  publish-github-packages:
+    name: Publish to GitHub Packages
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: ${{ env.NPM_SCOPE }}
+      - name: Retag as scoped package for GitHub Packages
+        # GitHub Packages 不接受无 scope 包名；只在 CI 里临时改名，
+        # 仓库源码里 npmjs 用的 dsh-scalpel 保持不变。
+        run: npm pkg set name="$NPM_SCOPE/$PACKAGE_NAME"
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npmjs:
+    name: Publish to npmjs (OIDC)
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC 必需
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 不设 registry-url / NODE_AUTH_TOKEN：OIDC 握手由 npm CLI 自动完成。
+          node-version: '24' # 内置 npm >= 11，满足 trusted publishing 要求
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
